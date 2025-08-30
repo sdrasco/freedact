@@ -102,6 +102,16 @@ as ``ALIAS_LABEL`` spans.  Only the alias term itself is captured – for exampl
 When a subject name appears nearby, the detector records it so later stages can
 link all references to a consistent pseudonym.
 
+## NER (optional)
+
+Named-entity recognition for people, organizations and locations is provided
+via spaCy when available. Install the optional dependencies with
+`pip install .[ner]` and choose a model through
+`config.detectors.ner.model` (defaults to ``en_core_web_trf``). If spaCy or the
+model is unavailable, the detector falls back to lightweight pattern rules or a
+pure-Python regex engine. Setting `config.detectors.ner.require` to `true`
+raises an error instead of falling back.
+
 ## Quick start (CLI)
 
 ```bash

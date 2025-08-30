@@ -7,6 +7,7 @@ from .bank_org import BankOrgDetector
 from .date_dob import DOBDetector
 from .date_generic import DateGenericDetector
 from .email import EmailDetector
+from .ner_spacy import SpacyNERDetector
 from .phone import PhoneDetector
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "DateGenericDetector",
     "DOBDetector",
     "AliasDetector",
+    "SpacyNERDetector",
 ]
