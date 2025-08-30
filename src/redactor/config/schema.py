@@ -8,8 +8,8 @@ from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
-from pydantic import BaseModel, ConfigDict, SecretStr, confloat, conint
+import yaml  # type: ignore[import-untyped]
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -64,7 +64,7 @@ class VerificationSettings(BaseModel):
     """Verification behaviour after redaction."""
 
     fail_on_residual: bool
-    min_confidence: confloat(ge=0.0, le=1.0) = 0.5
+    min_confidence: float = Field(0.5, ge=0.0, le=1.0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -100,7 +100,7 @@ class DetectorsSettings(BaseModel):
 class ConfigModel(BaseModel):
     """Top-level configuration model."""
 
-    schema_version: conint(ge=1)
+    schema_version: int = Field(..., ge=1)
     locale: str
     redact: RedactOptions
     preserve: PreserveOptions

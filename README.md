@@ -27,6 +27,14 @@ The redactor project aims to provide a privacy-first pipeline for sanitizing leg
 
 Modules are intentionally empty pending M1-T3 and later tasks.
 
+## Preprocessing
+
+Normalization cleans up a few Unicode quirks while preserving line breaks and
+most spacing.  It also returns a ``char_map`` so that every character in the
+normalized text can be traced back to its original index.  Sentence segmentation
+is intentionally conservative and aims only to provide reasonable hints for
+later detectors.
+
 ## Configuration
 
 The library loads default settings from `redactor/config/defaults.yml`. You can
