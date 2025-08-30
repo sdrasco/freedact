@@ -85,6 +85,14 @@ Street, unit, city/state/ZIP and PO Box lines are detected using the
 address block so redaction replaces the entire address at once.  The merger is
 layout-aware and tolerates a single blank line between components.
 
+## Dates vs DOBs
+
+The redactor differentiates between general dates and dates of birth.  Dates in
+contracts or correspondence are labelled ``DATE_GENERIC`` and preserved so they
+remain visible in the redacted text.  A date is upgraded to ``DOB`` only when
+nearby lexical triggers such as "DOB", "Date of Birth" or "born" make the
+birthdate intent clear.
+
 ## Quick start (CLI)
 
 ```bash
