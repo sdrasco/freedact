@@ -78,6 +78,13 @@ text.  Generated names adapt to match initials patterns and interior
 punctuation, keeping the redacted output natural.  For example, a source token
 like ``O’NEIL`` would become ``D’ANGELO`` when replaced.
 
+## Addresses (line-level)
+
+Street, unit, city/state/ZIP and PO Box lines are detected using the
+``usaddress`` library.  Each line is reported individually with minimal spans
+and structured components.  Adjacent lines will be merged into multi-line
+address blocks in a future milestone.
+
 ## Quick start (CLI)
 
 ```bash

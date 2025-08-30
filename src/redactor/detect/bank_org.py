@@ -139,7 +139,7 @@ def _is_mostly_lower(text: str) -> bool:
     if not tokens:
         return True
     title_count = sum(token[0].isupper() for token in tokens)
-    return title_count < len(tokens) / 2
+    return bool(title_count < len(tokens) / 2)
 
 
 def _trim_end(text: str, start: int, end: int) -> int:
