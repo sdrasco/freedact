@@ -78,12 +78,12 @@ text.  Generated names adapt to match initials patterns and interior
 punctuation, keeping the redacted output natural.  For example, a source token
 like ``O’NEIL`` would become ``D’ANGELO`` when replaced.
 
-## Addresses (line-level)
+## Addresses
 
 Street, unit, city/state/ZIP and PO Box lines are detected using the
-``usaddress`` library.  Each line is reported individually with minimal spans
-and structured components.  Adjacent lines will be merged into multi-line
-address blocks in a future milestone.
+``usaddress`` library.  Adjacent lines are merged into a single multi-line
+address block so redaction replaces the entire address at once.  The merger is
+layout-aware and tolerates a single blank line between components.
 
 ## Quick start (CLI)
 
