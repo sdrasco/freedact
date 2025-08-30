@@ -172,6 +172,17 @@ def self_test() -> int:
     ph_order = list(res4.placeholder_map.keys())
     assert ph_order == ["John Doe", "Fred Doe"], "Deterministic ordering of placeholders"
 
+    alias_sample = 'Dr. Fredrick Swanson, here after "Fred" signed.'
+    res5 = redact_text_pipeline(
+        text=alias_sample,
+        include_allcaps=False,
+        mask_mode=False,
+        strict_ids=False,
+        extra_account_terms=[],
+    )
+    assert 'John Doe, here after "John"' in res5.text, "Alias should use first name placeholder"
+    assert res5.placeholder_map["John Doe"]["aliases"], "Alias mapping recorded"
+
     assert res.placeholder_map["John Doe"]["canonical"].startswith("Jane"), "Key map canonical correct"
 
     print("All self-tests passed.")

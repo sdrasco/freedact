@@ -14,6 +14,17 @@ from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+# Optional NLP model (spaCy) for a first-pass PERSON entity detection.
+try:
+    import spacy
+
+    try:
+        _NLP = spacy.load("en_core_web_sm")
+    except Exception:  # model not installed or other runtime issue
+        _NLP = None
+except Exception:  # spaCy not installed
+    _NLP = None
+
 # --- Required runtime check for 'unidecode' (hard requirement for normalization) ---
 try:
     from unidecode import unidecode
@@ -78,7 +89,7 @@ def find_alias_links(text: str) -> Dict[str, str]:
     full_name = rf"(?:{title})?{token}(?:\s+{token})+"  # ≥2 tokens
     # 'hereinafter' (optionally 'referred to as'), then quoted alias
     alias_pat = re.compile(
-        rf"({full_name}).{{0,80}}?hereinafter(?:\s+referred\s+to\s+as)?\s*[“\"'‘]?([A-Za-z][\w\.\-']{{1,}})[”\"'’]?",
+        rf"({full_name}).{{0,80}}?here(?:inafter|\s*after)(?:\s+referred\s+to\s+as)?\s*[“\"'‘]?([A-Za-z][\w\.\-']{{1,}})[”\"'’]?",
         re.IGNORECASE | re.DOTALL,
     )
     links: Dict[str, str] = {}
@@ -159,6 +170,44 @@ def replace_person_names(
             next_id += 1
         return namekey_to_placeholder[k]
 
+    # -------------------------------------------------
+    # First pass: use spaCy NER if available to swap PERSON entities
+    # -------------------------------------------------
+    if _NLP is not None:
+        doc = _NLP(text)
+        out_chunks: List[str] = []
+        last_end = 0
+        for ent in doc.ents:
+            if ent.label_ != "PERSON":
+                continue
+            start, end = ent.start_char, ent.end_char
+            raw = text[start:end]
+            if PLACEHOLDER_RE.match(raw) or raw.strip().upper() == "[REDACTED]":
+                continue
+            canonical = raw.strip()
+            alias_key = normalize_key(canonical)
+            if alias_key in alias_links:
+                canonical_full = alias_links[alias_key]
+                placeholder_full = assign_placeholder(canonical_full)
+                if normalize_key(canonical_full) != normalize_key(canonical):
+                    aliases = placeholder_map[placeholder_full]["aliases"]
+                    if canonical not in aliases:
+                        aliases.append(canonical)
+                placeholder = (
+                    placeholder_full.split()[0]
+                    if " " not in canonical
+                    else placeholder_full
+                )
+            else:
+                placeholder_full = assign_placeholder(canonical)
+                placeholder = placeholder_full
+            out_chunks.append(text[last_end:start])
+            out_chunks.append("[REDACTED]" if mask_mode else placeholder)
+            last_end = end
+            count += 1
+        out_chunks.append(text[last_end:])
+        text = "".join(out_chunks)
+
     # organization check
     def looks_like_org(s: str) -> bool:
         s_l = s.lower()
@@ -220,11 +269,16 @@ def replace_person_names(
             alias = m.group(1)
             poss = m.group(2) or ""
             canonical_full = alias_links[normalize_key(alias)]
-            placeholder = assign_placeholder(canonical_full)
+            placeholder_full = assign_placeholder(canonical_full)
             if normalize_key(canonical_full) != normalize_key(alias):
-                aliases = placeholder_map[placeholder]["aliases"]
+                aliases = placeholder_map[placeholder_full]["aliases"]
                 if alias not in aliases:
                     aliases.append(alias)
+            placeholder = (
+                placeholder_full.split()[0]
+                if " " not in alias.strip()
+                else placeholder_full
+            )
             count += 1
             return ("[REDACTED]" if mask_mode else placeholder) + poss
 
