@@ -26,3 +26,19 @@ The redactor project aims to provide a privacy-first pipeline for sanitizing leg
 7. **Evaluate** performance (optional)
 
 Modules are intentionally empty pending M1-T3 and later tasks.
+
+## Configuration
+
+The library loads default settings from `redactor/config/defaults.yml`. You can
+override these by supplying your own YAML file:
+
+```yaml
+# myconfig.yml
+pseudonyms:
+  cross_doc_consistency: true
+```
+
+Load overrides with `load_config("myconfig.yml")`. Secrets such as the
+pseudonym seed are provided via environment variables; set
+`REDACTOR_SEED_SECRET` (or a custom variable defined by
+`pseudonyms.seed.secret_env`) to deterministically seed pseudonyms.
