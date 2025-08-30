@@ -1,22 +1,318 @@
-"""Account identifier detector.
+"""Account and identifier detector using ``python-stdnum`` validators.
 
-Purpose:
-    Detect bank or credit account numbers in text.
+This module exposes :class:`AccountIdDetector` which finds common financial and
+personal account numbers with high precision.  Detection proceeds in multiple
+passes using subtype specific regular expressions followed by validator calls
+from ``python-stdnum`` or the Luhn checksum.  The supported subtypes, in order
+of precedence, are:
 
-Key responsibilities:
-    - Match sequences matching account number formats.
-    - Apply checksum algorithms where applicable.
+``iban`` -> ``swift_bic`` -> ``routing_aba`` -> ``cc`` -> ``ssn`` -> ``ein`` -> ``generic``
 
-Inputs/Outputs:
-    - Inputs: text string.
-    - Outputs: list of `EntitySpan` for account identifiers.
-
-Public contracts (planned):
-    - `detect(text)`: Return spans for account numbers.
-
-Notes/Edge cases:
-    - Should minimize false positives from random digit strings.
-
-Dependencies:
-    - `patterns` module and `checksum` utilities (optional).
+For each candidate the detector trims trailing punctuation such as ``.,)`` and
+emits an :class:`~redactor.detect.base.EntitySpan` with label
+:class:`~redactor.detect.base.EntityLabel.ACCOUNT_ID`.  Spans carry attributes
+including ``subtype``, normalised and display representations and where
+applicable issuer or scheme information.  Overlapping spans are resolved by the
+above precedence order to avoid duplicate reporting.  Heuristics are applied to
+avoid false positives; for instance ABA routing numbers require nearby context
+keywords and generic account numbers only match when anchored by explicit
+keywords.
 """
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import List
+
+from stdnum import iban, iso9362, luhn
+from stdnum.us import ein as us_ein
+from stdnum.us import routing_number
+from stdnum.us import ssn as us_ssn
+
+from .base import DetectionContext, EntityLabel, EntitySpan
+
+__all__ = ["AccountIdDetector", "get_detector"]
+
+TRAILING_PUNCTUATION = ")]};:,.!?»”’>"
+
+# Regular expressions for each subtype -------------------------------------------------------
+_IBAN_RE = re.compile(r"\b([A-Z]{2}[0-9]{2}(?:[ ]?[A-Z0-9]{1,4}){2,})\b", re.IGNORECASE)
+_BIC_RE = re.compile(r"\b([A-Za-z]{4}[A-Za-z]{2}[A-Za-z0-9]{2}(?:[A-Za-z0-9]{3})?)\b")
+_ABA_RE = re.compile(r"\b([0-9]{9})\b")
+_CC_RE = re.compile(r"\b((?:\d[ -]?){13,19})\b")
+_SSN_RE = re.compile(r"\b(\d{3}-\d{2}-\d{4}|\d{9})\b")
+_EIN_RE = re.compile(r"\b(\d{2}-\d{7}|\d{9})\b")
+_GENERIC_RE = re.compile(
+    (
+        r"\b(?:[A-Za-z]?(?:acct|account|a/c|iban|iban:|iban#|acct#|account#|sort\scode)"
+        r"[:\s#]+([A-Za-z0-9][A-Za-z0-9 -]{4,}))"
+    ),
+    re.IGNORECASE,
+)
+
+# Keyword context for routing numbers -------------------------------------------------------
+_ROUTING_KEYWORDS = ("routing", "aba", "rt#", "rtn", "fedwire")
+
+# Card scheme prefixes ---------------------------------------------------------------------
+_SCHEME_PATTERNS = {
+    "visa": re.compile(r"^4"),
+    "mastercard": re.compile(r"^(5[1-5]|222[1-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)"),
+    "amex": re.compile(r"^3[47]"),
+    "discover": re.compile(r"^(6011|65|64[4-9])"),
+    "jcb": re.compile(r"^35"),
+    "diners": re.compile(r"^(36|38)"),
+}
+
+# Ranking for overlap resolution -----------------------------------------------------------
+_PRIORITY = {
+    "iban": 7,
+    "swift_bic": 6,
+    "routing_aba": 5,
+    "cc": 4,
+    "ssn": 3,
+    "ein": 2,
+    "generic": 1,
+}
+
+
+@dataclass(slots=True)
+class _Candidate:
+    span: EntitySpan
+    subtype: str
+
+
+def _trim(text: str, start: int, end: int) -> tuple[int, str]:
+    """Trim trailing punctuation and return new end and substring."""
+
+    while end > start and text[end - 1] in TRAILING_PUNCTUATION:
+        end -= 1
+    return end, text[start:end]
+
+
+class AccountIdDetector:
+    """Detect various financial or identification numbers within text."""
+
+    _confidence: float = 0.99
+
+    def name(self) -> str:  # pragma: no cover - trivial
+        return "account_ids"
+
+    # ------------------------------------------------------------------
+    def detect(self, text: str, context: DetectionContext | None = None) -> list[EntitySpan]:
+        _ = context
+        candidates: List[_Candidate] = []
+
+        # IBAN -----------------------------------------------------------------
+        for match in _IBAN_RE.finditer(text):
+            start, end = match.span(1)
+            end, raw = _trim(text, start, end)
+            try:
+                normalized = iban.compact(raw)
+                if not iban.is_valid(normalized):
+                    continue
+            except Exception:  # pragma: no cover - defensive
+                continue
+            attrs = {
+                "subtype": "iban",
+                "normalized": normalized.upper(),
+                "display": iban.format(normalized),
+                "issuer_or_country": normalized[:2].upper(),
+                "length": len(normalized),
+            }
+            span = EntitySpan(
+                start,
+                end,
+                raw,
+                EntityLabel.ACCOUNT_ID,
+                self.name(),
+                self._confidence,
+                attrs,
+            )
+            candidates.append(_Candidate(span, "iban"))
+
+        # SWIFT/BIC ------------------------------------------------------------
+        for match in _BIC_RE.finditer(text):
+            start, end = match.span(1)
+            if (start > 0 and text[start - 1].isalnum()) or (
+                end < len(text) and text[end].isalnum()
+            ):
+                continue
+            end, raw = _trim(text, start, end)
+            candidate = raw.upper()
+            if not iso9362.is_valid(candidate):
+                continue
+            attrs = {
+                "subtype": "swift_bic",
+                "normalized": candidate,
+                "display": candidate,
+                "issuer_or_country": candidate[4:6],
+                "length": len(candidate),
+            }
+            span = EntitySpan(
+                start,
+                end,
+                raw,
+                EntityLabel.ACCOUNT_ID,
+                self.name(),
+                self._confidence,
+                attrs,
+            )
+            candidates.append(_Candidate(span, "swift_bic"))
+
+        # ABA routing numbers --------------------------------------------------
+        for match in _ABA_RE.finditer(text):
+            start, end = match.span(1)
+            context_window = text[max(0, start - 20) : min(len(text), end + 20)].lower()
+            if not any(keyword in context_window for keyword in _ROUTING_KEYWORDS):
+                continue
+            end, raw = _trim(text, start, end)
+            if not routing_number.is_valid(raw):
+                continue
+            attrs = {
+                "subtype": "routing_aba",
+                "normalized": raw,
+                "display": raw,
+                "issuer_or_country": "US",
+                "length": len(raw),
+            }
+            span = EntitySpan(
+                start,
+                end,
+                raw,
+                EntityLabel.ACCOUNT_ID,
+                self.name(),
+                self._confidence,
+                attrs,
+            )
+            candidates.append(_Candidate(span, "routing_aba"))
+
+        # Credit/debit cards ---------------------------------------------------
+        for match in _CC_RE.finditer(text):
+            start, end = match.span(1)
+            end, raw = _trim(text, start, end)
+            digits = re.sub(r"[ -]", "", raw)
+            if not 13 <= len(digits) <= 19:
+                continue
+            if not luhn.is_valid(digits):
+                continue
+            scheme: str | None = None
+            for name, pat in _SCHEME_PATTERNS.items():
+                if pat.match(digits):
+                    scheme = name
+                    break
+            if scheme is None:
+                continue
+            display = " ".join(re.findall(".{1,4}", digits))
+            attrs = {
+                "subtype": "cc",
+                "normalized": digits,
+                "display": display,
+                "scheme": scheme,
+                "length": len(digits),
+            }
+            span = EntitySpan(
+                start,
+                end,
+                raw,
+                EntityLabel.ACCOUNT_ID,
+                self.name(),
+                self._confidence,
+                attrs,
+            )
+            candidates.append(_Candidate(span, "cc"))
+
+        # SSN ------------------------------------------------------------------
+        for match in _SSN_RE.finditer(text):
+            start, end = match.span(1)
+            if "§" in text[max(0, start - 3) : start]:
+                continue
+            end, raw = _trim(text, start, end)
+            digits = raw.replace("-", "")
+            if not us_ssn.is_valid(digits):
+                continue
+            display = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+            attrs = {
+                "subtype": "ssn",
+                "normalized": digits,
+                "display": display,
+                "issuer_or_country": "US",
+                "length": len(digits),
+            }
+            span = EntitySpan(
+                start,
+                end,
+                raw,
+                EntityLabel.ACCOUNT_ID,
+                self.name(),
+                self._confidence,
+                attrs,
+            )
+            candidates.append(_Candidate(span, "ssn"))
+
+        # EIN ------------------------------------------------------------------
+        for match in _EIN_RE.finditer(text):
+            start, end = match.span(1)
+            end, raw = _trim(text, start, end)
+            digits = raw.replace("-", "")
+            if not us_ein.is_valid(digits):
+                continue
+            display = f"{digits[:2]}-{digits[2:]}"
+            attrs = {
+                "subtype": "ein",
+                "normalized": digits,
+                "display": display,
+                "issuer_or_country": "US",
+                "length": len(digits),
+            }
+            span = EntitySpan(
+                start,
+                end,
+                raw,
+                EntityLabel.ACCOUNT_ID,
+                self.name(),
+                self._confidence,
+                attrs,
+            )
+            candidates.append(_Candidate(span, "ein"))
+
+        # Generic account numbers ----------------------------------------------
+        for match in _GENERIC_RE.finditer(text):
+            start, end = match.span(1)
+            end, raw = _trim(text, start, end)
+            compact = re.sub(r"[ -]", "", raw).upper()
+            if not (6 <= len(compact) <= 34) or not any(c.isdigit() for c in compact):
+                continue
+            attrs = {
+                "subtype": "generic",
+                "normalized": compact,
+                "display": raw,
+                "length": len(compact),
+            }
+            span = EntitySpan(
+                start,
+                end,
+                raw,
+                EntityLabel.ACCOUNT_ID,
+                self.name(),
+                0.9,
+                attrs,
+            )
+            candidates.append(_Candidate(span, "generic"))
+
+        # Overlap resolution ---------------------------------------------------
+        sorted_cands = sorted(
+            candidates, key=lambda c: (-_PRIORITY.get(c.subtype, 0), c.span.start, c.span.end)
+        )
+        final: list[EntitySpan] = []
+        for cand in sorted_cands:
+            if any(not (cand.span.end <= ex.start or cand.span.start >= ex.end) for ex in final):
+                continue
+            final.append(cand.span)
+        return sorted(final, key=lambda s: s.start)
+
+
+def get_detector() -> AccountIdDetector:
+    """Return an :class:`AccountIdDetector` instance."""
+
+    return AccountIdDetector()
