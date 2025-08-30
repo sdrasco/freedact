@@ -64,6 +64,13 @@ name configured in `pseudonyms.seed.secret_env`) to cryptographically tie these
 values to your deployment. Omitting the secret still yields deterministic
 output but without cryptographic protection.
 
+## Case and format preservation
+
+Pseudonym replacements mirror the casing and punctuation shape of the source
+text.  Generated names adapt to match initials patterns and interior
+punctuation, keeping the redacted output natural.  For example, a source token
+like ``O’NEIL`` would become ``D’ANGELO`` when replaced.
+
 ## Quick start (CLI)
 
 ```bash
