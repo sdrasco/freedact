@@ -101,7 +101,8 @@ def replace_person_names(
     Replace person names with deterministic placeholders or [REDACTED] and return:
       (new_text, placeholder_map, count_replacements)
 
-    placeholder_map: OrderedDict mapping 'John Doe N' → {canonical: str, aliases: [..]}
+    placeholder_map: OrderedDict mapping placeholder names like 'John Doe' or
+    'Fred Doe 2' → {canonical: str, aliases: [..]}
     """
     # Build name pattern: optional title + ≥2 tokens; supports initials and hyphenated/apos names.
     title = r"(?:(?:Dr|Mr|Mrs|Ms|Prof)\.\s+)?"
@@ -121,12 +122,38 @@ def replace_person_names(
     next_id = 1
     count = 0
 
+    PLACEHOLDER_FIRST_NAMES = [
+        "John",
+        "Fred",
+        "June",
+        "Alex",
+        "Sam",
+        "Pat",
+        "Chris",
+        "Robin",
+        "Taylor",
+        "Morgan",
+    ]
+    PLACEHOLDER_LAST_NAME = "Doe"
+    PLACEHOLDER_RE = re.compile(
+        r"^(?:" + "|".join(re.escape(n) for n in PLACEHOLDER_FIRST_NAMES) + r") "
+        + re.escape(PLACEHOLDER_LAST_NAME)
+        + r"(?: \d+)?\b"
+    )
+
+    def make_placeholder(idx: int) -> str:
+        base = PLACEHOLDER_FIRST_NAMES[(idx - 1) % len(PLACEHOLDER_FIRST_NAMES)]
+        cycle = (idx - 1) // len(PLACEHOLDER_FIRST_NAMES) + 1
+        if cycle == 1:
+            return f"{base} {PLACEHOLDER_LAST_NAME}"
+        return f"{base} {PLACEHOLDER_LAST_NAME} {cycle}"
+
     # convenience
     def assign_placeholder(canonical: str) -> str:
         nonlocal next_id
         k = normalize_key(canonical)
         if k not in namekey_to_placeholder:
-            ph = f"John Doe {next_id}"
+            ph = make_placeholder(next_id)
             namekey_to_placeholder[k] = ph
             placeholder_map[ph] = {"canonical": canonical, "aliases": []}
             next_id += 1
@@ -150,7 +177,7 @@ def replace_person_names(
         poss = m.group("pos") or ""
 
         # Idempotence: skip placeholders or [REDACTED]
-        if re.match(r"^John Doe \d+\b", raw) or raw.strip().upper() == "[REDACTED]":
+        if PLACEHOLDER_RE.match(raw) or raw.strip().upper() == "[REDACTED]":
             return raw
 
         # Skip organizations

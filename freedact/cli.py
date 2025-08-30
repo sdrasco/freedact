@@ -124,10 +124,10 @@ def self_test() -> int:
         strict_ids=False,
         extra_account_terms=[],
     )
-    assert "John Doe 1" in res.text, "Expected placeholder for person"
+    assert "John Doe" in res.text, "Expected placeholder for person"
     phs = list(res.placeholder_map.keys())
-    assert phs and phs[0] == "John Doe 1", "First placeholder should be John Doe 1"
-    info = res.placeholder_map["John Doe 1"]
+    assert phs and phs[0] == "John Doe", "First placeholder should be John Doe"
+    info = res.placeholder_map["John Doe"]
     assert "Jane A. Smith" in info["canonical"], "Canonical full name recorded"
     assert any(a.lower() == "janie" for a in info["aliases"]), "Alias 'Janie' recorded"
 
@@ -170,9 +170,9 @@ def self_test() -> int:
         extra_account_terms=[],
     )
     ph_order = list(res4.placeholder_map.keys())
-    assert ph_order == ["John Doe 1", "John Doe 2"], "Deterministic ordering of placeholders"
+    assert ph_order == ["John Doe", "Fred Doe"], "Deterministic ordering of placeholders"
 
-    assert res.placeholder_map["John Doe 1"]["canonical"].startswith("Jane"), "Key map canonical correct"
+    assert res.placeholder_map["John Doe"]["canonical"].startswith("Jane"), "Key map canonical correct"
 
     print("All self-tests passed.")
     return 0
