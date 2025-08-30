@@ -8,8 +8,9 @@ from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+
+import yaml
 
 # ---------------------------------------------------------------------------
 # Pydantic models
