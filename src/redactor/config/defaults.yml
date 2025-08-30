@@ -1,2 +1,58 @@
-# Placeholder configuration defaults.
-# Actual values will be defined in M1-T4.
+# Default configuration for the redactor package.
+#
+# Settings are loaded from this file and may be overridden by providing a user YAML
+# to `load_config(path)`; user values take precedence over these defaults.
+# Environment variables can further override certain secrets (see pseudonyms.seed).
+
+schema_version: 1
+
+locale: "US"   # affects address/phone defaults; free-form string for now
+
+redact:
+  person_names: true
+  alias_labels: "redact"     # one of: ["redact", "keep_roles"]
+  addresses: true
+  phones: true
+  emails: true
+  bank_names: true
+  account_numbers: true
+  DOB: true
+  generic_dates: false       # keep non-DOB dates unless configured otherwise
+
+preserve:
+  money: true
+  durations: true
+  section_refs: true
+
+pseudonyms:
+  cross_doc_consistency: false
+  seed:
+    secret_env: "REDACTOR_SEED_SECRET"   # loader reads this env var for the secret
+    secret: null                         # populated from env at load time (never commit)
+
+verification:
+  fail_on_residual: true
+  min_confidence: 0.50
+
+detectors:
+  ner:
+    enabled: true
+    model: "en_core_web_trf"     # optional heavy dep; not required to exist at load time
+    require: false
+  address:
+    backend: "auto"              # "usaddress" | "libpostal" | "auto"
+    require: false
+
+precedence:
+  - ACCOUNT_ID
+  - EMAIL
+  - PHONE
+  - ADDRESS_BLOCK
+  - ALIAS_LABEL
+  - PERSON
+  - ORG
+  - BANK_ORG
+  - GPE
+  - LOC
+  - DOB
+  - DATE_GENERIC
