@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redactor"
+version = "0.1.0"
+description = "Privacy-first Legal Document Redactor"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Project Contributors"}]
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+# [project.scripts]
+# redactor = "redactor.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "black>=23.0",
+    "mypy>=1.0",
+    "pytest>=7.0",
+]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "B", "I"]
+ignore = ["E203"]  # W503 deprecated
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
