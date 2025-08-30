@@ -1,23 +1,13 @@
-"""Custom exception types.
+"""Typed exceptions for span validation and manipulation."""
 
-Purpose:
-    Define project-specific error classes for clarity.
 
-Key responsibilities:
-    - Provide base exception for package errors.
-    - Distinguish user vs system errors.
+class SpanError(ValueError):
+    """Base class for span related errors."""
 
-Inputs/Outputs:
-    - Inputs: error message.
-    - Outputs: exception instances.
 
-Public contracts (planned):
-    - `RedactorError`: Base class for package exceptions.
-    - `ConfigurationError`: Raised for invalid configuration.
+class OverlapError(SpanError):
+    """Raised when two spans overlap."""
 
-Notes/Edge cases:
-    - Exceptions should include context to aid debugging.
 
-Dependencies:
-    - Standard library only.
-"""
+class SpanOutOfBoundsError(SpanError):
+    """Raised when span coordinates are invalid or out of bounds."""
