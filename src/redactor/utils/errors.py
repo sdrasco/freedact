@@ -1,4 +1,4 @@
-"""Typed exceptions for span validation and manipulation."""
+"""Typed exceptions for span validation/manipulation and I/O formats."""
 
 
 class SpanError(ValueError):
@@ -11,3 +11,11 @@ class OverlapError(SpanError):
 
 class SpanOutOfBoundsError(SpanError):
     """Raised when span coordinates are invalid or out of bounds."""
+
+
+class IOFormatError(ValueError):
+    """Base class for I/O format related errors."""
+
+
+class UnsupportedFormatError(IOFormatError):
+    """Raised when no reader or writer is registered for a file format."""
