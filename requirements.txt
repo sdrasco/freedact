@@ -1,15 +1,4 @@
-# Core runtime dependencies
 unidecode
 python-docx
 reportlab
 pdfplumber
-
-# Optional: if pdfplumber is unavailable, pypdf also works
-# pypdf
-
-# Optional: .doc support
-# textract
-
-# Optional: OCR for scanned PDFs (used only with --ocr)
-# pytesseract
-# pdf2image
