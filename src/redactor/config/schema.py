@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from pathlib import Path
 import os
+from collections.abc import Mapping
+from importlib import resources as importlib_resources
+from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from importlib import resources as importlib_resources
-from pydantic import BaseModel, ConfigDict, SecretStr, conint, confloat
-
+from pydantic import BaseModel, ConfigDict, SecretStr, confloat, conint
 
 # ---------------------------------------------------------------------------
 # Pydantic models
