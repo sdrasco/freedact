@@ -112,6 +112,20 @@ model is unavailable, the detector falls back to lightweight pattern rules or a
 pure-Python regex engine. Setting `config.detectors.ner.require` to `true`
 raises an error instead of falling back.
 
+## Name heuristics
+
+`redactor.detect.names_person` offers dependency-free helpers for judging
+whether a string looks like a real personal name. Tokens are analysed for
+honorifics, initials, particles such as ``de`` or ``van``, hyphenated or
+apostrophized surnames and common suffixes like ``Jr.`` or ``III``. Each
+candidate receives a deterministic score based on these patterns (base +0.45 for
+``given + surname`` with bonuses for initials, particles and suffixes, and
+penalties for digits or role words). Names scoring ``≥ 0.60`` are considered
+probable. Examples: ``John Doe``, ``J. D. Salinger`` and ``Ludwig van
+Beethoven`` score as names, while ``Bank of America``, ``Buyer`` and
+``UNITED STATES`` do not. NER remains the primary detector; these heuristics
+refine and validate its output.
+
 ## Quick start (CLI)
 
 ```bash

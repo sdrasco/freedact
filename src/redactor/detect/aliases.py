@@ -146,6 +146,8 @@ def _guess_subject(
         if candidate:
             looked += 1
             if _looks_like_subject(candidate):
+                # TODO(M7-T2): prefer name-like candidates using
+                # ``is_probable_person_name`` from ``names_person``.
                 return candidate, prev
         prev -= 1
     return None, None
