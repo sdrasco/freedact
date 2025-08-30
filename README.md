@@ -1,6 +1,6 @@
 # freedact
 
-Offline PII redactor for PDF, DOCX and DOC documents.
+Offline Personally identifiable information (PII) redactor for PDF, DOCX and DOC documents.
 
 ## Quick Start
 
