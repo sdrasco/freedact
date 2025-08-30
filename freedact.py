@@ -91,6 +91,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         epilog=HELP_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.register("action", "true_false", _TrueFalseAction)
     parser.add_argument("input", nargs="?", help="Path to input file (.pdf, .docx, .doc)")
     parser.add_argument("--pdf", action="store_true", help="Also write <input>_redacted.pdf (uses 'reportlab')")
     parser.add_argument("--ocr", action="store_true", help="Enable OCR for PDFs when text is not extractable")
@@ -111,10 +112,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
 class _TrueFalseAction(argparse.Action):
     def __call__(self, parser, ns, values, option_string=None):
         setattr(ns, self.dest, values if isinstance(values, bool) else True)
-
-
-# Register shim
-argparse._ActionsContainer.register("true_false", _TrueFalseAction)
 
 
 # ----------------------------
