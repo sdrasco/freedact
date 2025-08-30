@@ -1,103 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-freedact.py — Self‑contained, offline PII redactor for PDF/DOCX/DOC (Python 3.9+)
+Offline PII redaction for PDF, DOCX and legacy DOC files.
 
-Summary
--------
-Redacts personally identifiable information from documents **entirely offline** and
-writes:
-  1) <input>_redacted.docx (always attempted)
-  2) <input>_redacted.pdf (when --pdf is passed)
-  3) <input>_redaction_key.json (mapping placeholders → original names/aliases, unless --no-keep-key)
-  4) A concise console summary of redaction counts by category.
+Freedact replaces detected personal names with deterministic placeholders and
+redacts addresses, account names and numbers without any network access.
+Usage instructions and details live in the README.
 
-Deterministic placeholder assignment (John Doe 1, John Doe 2, …) follows order of first
-appearance. Heuristics are simple by design, prioritizing safety and portability over
-layout fidelity. Works on macOS and is cross‑platform where dependencies are available.
-
-Core Features
--------------
-• Persons:
-  - Detect sequences of ≥2 capitalized tokens with optional titles (Dr./Mr./Mrs./Ms./Prof.)
-    and optional middle initials (e.g., "J. Smith", "Jane A. Smith").
-  - Skip obvious organizations (university, college, credit union, bank, trust, llc, inc,
-    corp, company, foundation, department, committee, society).
-  - Link “Hereinafter ‘Alias’” style nicknames to the corresponding full name.
-  - Preserve possessives (e.g., “Smith’s car” → “John Doe 1’s car”).
-  - Optional --include-allcaps to consider ALL-CAPS candidate names (default off).
-  - Optional --mask-mode to use [REDACTED] instead of John Doe N in body text.
-
-• Addresses → [REDACTED ADDRESS] (whole-line redaction):
-  - Lines like “<number> <street> St/Rd/Ave/…”, “City, ST 12345” (ZIP+4 supported),
-    common UK postcodes (e.g., “KY16 8QP”), P.O. Box lines.
-  - If a street line is redacted, redact immediately following Apt/Apartment/Unit line.
-
-• Account Names → [REDACTED ACCOUNT NAME]
-  - Built-in extensible list (e.g., “retirement account”, “brokerage account”, “checking
-    account”, “money market”, “credit card”, “current account”, “Citibank”, “Fidelity”,
-    “TIAA‑CREF”, “CalPERS”, “Santander”, common “credit union”).
-  - Add more at runtime with --account-term "Custom Term" (repeatable).
-
-• Account Numbers/IDs → [REDACTED ACCOUNT NUMBER]
-  - Patterns include: “account #…”, IBAN-like, 7+ contiguous digits, card-like
-    “#### #### #### ####”.
-  - Optional --strict-ids to also redact VIN-like IDs (A‑Z0‑9, 11–17 chars, excluding I/O/Q).
-
-Inputs
-------
-• .pdf, .docx, .doc
-• PDF (text-based): try `pdfplumber` first, else `pypdf` (PyPDF2/pypdf).
-• PDF (scanned): optional OCR via `pytesseract` + `pdf2image` when --ocr is passed.
-  (Requires system installs of Tesseract and Poppler.)
-• DOCX: `python-docx`.
-• DOC (legacy): try `textract`, else `antiword`. If both unavailable, instruct to convert to .docx.
-
-Writers
--------
-• DOCX: `python-docx`. Writes redacted paragraphs; appends “Anonymization Key (Persons)”
-  page (unless --no-keep-key).
-• PDF: `reportlab`, A4 portrait, Courier, simple word-wrap; final page prints the same key
-  (unless --no-keep-key).
-
-Privacy
--------
-• No network calls, telemetry, or external services. Works entirely offline on local files.
-
-Installation (offline-friendly)
--------------------------------
-Python packages (create/activate a venv if desired):
-    pip install --upgrade pip
-    pip install python-docx reportlab unidecode
-    pip install pdfplumber  # or: pip install pypdf
-    # Optional for .doc:
-    pip install textract
-    # Optional OCR for scanned PDFs (used only with --ocr):
-    pip install pytesseract pdf2image
-
-macOS (Homebrew) system tools (only if you need them):
-    brew install tesseract poppler   # OCR support for --ocr (tesseract & pdftoppm)
-    brew install antiword            # Optional .doc fallback
-
-Windows (system tools if you need OCR):
-  - Install Tesseract: https://tesseract-ocr.github.io/tessdoc/Installation.html
-  - Install Poppler:   https://blog.alivate.com.au/poppler-windows/
-
-Usage
------
-    python freedact.py input.pdf --pdf --ocr
-    python freedact.py input.docx --strict-ids --account-term "Acme Bank"
-    python freedact.py input.doc --pdf
-    python freedact.py input.pdf --dry-run
-    python freedact.py --self-test
-
-Run `python freedact.py --help` for full CLI details.
-
-License
--------
-This script is provided "as is" without warranty of any kind. Review outputs before use.
-
+This project is released under the MIT License.
 """
+
 
 from __future__ import annotations
 
