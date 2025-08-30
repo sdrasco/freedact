@@ -50,3 +50,11 @@ Load overrides with `load_config("myconfig.yml")`. Secrets such as the
 pseudonym seed are provided via environment variables; set
 `REDACTOR_SEED_SECRET` (or a custom variable defined by
 `pseudonyms.seed.secret_env`) to deterministically seed pseudonyms.
+
+## Quick start (CLI)
+
+```bash
+redactor run --in samples/snippet.txt --out out/sanitized.txt --report out/report
+```
+
+Note: currently runs preprocessing only; full redaction pipeline will be wired in later milestones.
