@@ -1,22 +1,174 @@
-"""Phone number detector.
+"""High‑precision phone number detector using ``libphonenumbers``.
 
-Purpose:
-    Locate telephone numbers in free-form text.
+This module exposes :class:`PhoneDetector`, a detector that leverages
+Google's `libphonenumbers <https://github.com/google/libphonenumber>`_
+library to locate telephone numbers.  Candidates are produced via
+``PhoneNumberMatcher`` with a strict leniency (``STRICT_GROUPING`` when
+available, otherwise ``VALID``) to reduce false positives.  Detected
+numbers are validated and enriched with a variety of normalised formats
+such as E.164, national, and international representations.
 
-Key responsibilities:
-    - Use regex patterns for international formats.
-    - Normalize captured numbers for comparison.
+After extraction the detector trims trailing punctuation characters that
+are common in prose but not part of the phone number.  It purposely only
+trims the right side so that leading parentheses belonging to the phone
+remain intact.  Attributes on the resulting :class:`~redactor.detect.base.EntitySpan`
+include ``e164``, ``national``, ``international``, ``country_code``,
+``region_code``, ``significant`` digits, detected ``type``, ``extension``
+if present and a flag indicating whether the original text contained a
+leading ``+`` sign.
 
-Inputs/Outputs:
-    - Inputs: text string.
-    - Outputs: list of `EntitySpan` representing phone numbers.
-
-Public contracts (planned):
-    - `detect(text)`: Return spans for phone numbers.
-
-Notes/Edge cases:
-    - Extension numbers and short codes require special handling.
-
-Dependencies:
-    - `patterns` module for regexes.
+The detector does not attempt to resolve overlaps with other entity
+types; downstream components (e.g. the span merger) are responsible for
+that.  In the merge hierarchy phone numbers rank below emails, so an
+overlapping email will take precedence.
 """
+
+from __future__ import annotations
+
+import re
+
+from phonenumbers import (
+    SUPPORTED_REGIONS,
+    Leniency,
+    PhoneNumber,
+    PhoneNumberFormat,
+    PhoneNumberMatcher,
+    PhoneNumberType,
+    format_number,
+    is_valid_number,
+    national_significant_number,
+    number_type,
+    region_code_for_number,
+)
+
+from .base import DetectionContext, EntityLabel, EntitySpan
+
+__all__ = ["PhoneDetector", "get_detector"]
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+TRAILING_PUNCTUATION = "),]};:,.!?»”’>"
+
+_NO_PREFIX_RE = re.compile(r"(?i)No\.\s*$")
+
+
+def _lookup_leniency(name: str) -> Leniency:
+    """Return ``Leniency`` enum member ``name`` if available.
+
+    ``libphonenumbers`` occasionally changes available leniencies.  This helper
+    looks up the given name and falls back to ``Leniency.VALID`` if the desired
+    value is not present in the installed version.
+    """
+
+    return getattr(Leniency, name, Leniency.VALID)
+
+
+def normalize_region(locale: str | None) -> str | None:
+    """Return a best‑effort region code derived from ``locale``.
+
+    The function uppercases the locale and validates it against
+    ``phonenumbers.SUPPORTED_REGIONS``.  For composite locales such as
+    ``en_US`` or ``en-US`` the portion after the separator is used.  Unknown
+    locales yield ``None`` so that ``libphonenumbers`` may apply its own
+    inference rules.
+    """
+
+    if not locale:
+        return None
+    candidate = locale.split("-")[-1].split("_")[-1].upper()
+    return candidate if candidate in SUPPORTED_REGIONS else None
+
+
+# Determine leniency and associated confidence score at import time.
+_LENIENCY = _lookup_leniency("STRICT_GROUPING")
+_CONFIDENCE = 0.99 if getattr(_LENIENCY, "name", "") == "STRICT_GROUPING" else 0.98
+
+
+def _phone_type_name(num: PhoneNumber) -> str:
+    """Return the lower‑case name of the phone number type."""
+
+    t = number_type(num)
+    return PhoneNumberType._VALUES_TO_NAMES.get(t, "unknown").lower()
+
+
+# ---------------------------------------------------------------------------
+# Detector implementation
+# ---------------------------------------------------------------------------
+
+
+class PhoneDetector:
+    """Detect phone numbers within text."""
+
+    _confidence: float = _CONFIDENCE
+    _leniency: Leniency = _LENIENCY
+
+    def name(self) -> str:  # pragma: no cover - trivial
+        return "phone"
+
+    def detect(self, text: str, context: DetectionContext | None = None) -> list[EntitySpan]:
+        """Detect phone numbers in ``text``."""
+
+        region = normalize_region(context.locale if context else None)
+        matcher = PhoneNumberMatcher(text, region, leniency=self._leniency)
+
+        spans: list[EntitySpan] = []
+        for match in matcher:
+            start, end = match.start, match.end
+            matched_text = text[start:end]
+
+            # Skip obvious overlaps or legal section references.
+            if "@" in matched_text:
+                continue
+            if "§" in matched_text or "§" in text[max(0, start - 2) : start]:
+                continue
+            if _NO_PREFIX_RE.search(text[max(0, start - 5) : start]):
+                continue
+
+            num = match.number
+            if not is_valid_number(num):
+                continue
+
+            # Trim trailing punctuation that is outside the phone number.
+            while matched_text and matched_text[-1] in TRAILING_PUNCTUATION:
+                end -= 1
+                matched_text = matched_text[:-1]
+
+            attrs = {
+                "e164": format_number(num, PhoneNumberFormat.E164),
+                "national": format_number(num, PhoneNumberFormat.NATIONAL),
+                "international": format_number(num, PhoneNumberFormat.INTERNATIONAL),
+                "country_code": num.country_code,
+                "region_code": region_code_for_number(num),
+                "significant": national_significant_number(num),
+                "type": _phone_type_name(num),
+                "extension": num.extension or None,
+                "had_plus": match.raw_string.strip().startswith("+"),
+            }
+
+            spans.append(
+                EntitySpan(
+                    start,
+                    end,
+                    matched_text,
+                    EntityLabel.PHONE,
+                    "phone",
+                    self._confidence,
+                    attrs,
+                )
+            )
+
+        # De‑duplicate spans by [start, end).
+        unique: dict[tuple[int, int], EntitySpan] = {}
+        for span in spans:
+            key = (span.start, span.end)
+            if key not in unique:
+                unique[key] = span
+        return sorted(unique.values(), key=lambda s: s.start)
+
+
+def get_detector() -> PhoneDetector:
+    """Return a :class:`PhoneDetector` instance."""
+
+    return PhoneDetector()
