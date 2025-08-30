@@ -13,8 +13,8 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python freedact.py input.pdf --pdf
-python freedact.py --self-test
+python -m freedact input.pdf --pdf
+python -m freedact --self-test
 ```
 
 Outputs:
