@@ -1,5 +1,6 @@
 """Pseudonymization utilities for generating surrogate data."""
 
+from .generator import PseudonymGenerator
 from .seed import (
     canonicalize_key,
     doc_hash,
@@ -12,6 +13,7 @@ from .seed import (
 )
 
 __all__ = [
+    "PseudonymGenerator",
     "canonicalize_key",
     "doc_hash",
     "doc_scope",

@@ -64,6 +64,13 @@ name configured in `pseudonyms.seed.secret_env`) to cryptographically tie these
 values to your deployment. Omitting the secret still yields deterministic
 output but without cryptographic protection.
 
+## Pseudonym generator (stub)
+
+The current pseudonym generator maps each entity to a deterministic placeholder
+such as `PERSON_xxxxx` or `ORG_xxxxx`. These tokens are stable for a given
+configuration and scope but are clearly fake. Future milestones will introduce
+shape-preserving fakes and integrate them with case/format preservation.
+
 ## Case and format preservation
 
 Pseudonym replacements mirror the casing and punctuation shape of the source
