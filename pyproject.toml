@@ -36,6 +36,10 @@ dev = [
     "pytest>=7.0",
     "types-PyYAML",
 ]
+ner = [
+    "spacy>=3.7,<3.8",
+    "spacy-transformers>=1.3,<1.4",
+]
 
 [tool.setuptools.package-dir]
 "" = "src"
@@ -76,4 +80,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["typer.testing"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["spacy", "spacy.*"]
 ignore_missing_imports = true
