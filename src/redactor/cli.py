@@ -32,13 +32,13 @@ app = typer.Typer(
 )
 
 
-@app.callback()  # type: ignore[misc]
+@app.callback()
 def main() -> None:
     """Entry point for the redactor command group."""
     pass
 
 
-@app.command()  # type: ignore[misc]
+@app.command()
 def run(
     in_path: Path = typer.Option(..., "--in", help="Input file (.txt only for now)"),  # noqa: B008
     out_path: Path = typer.Option(..., "--out", help="Output file (.txt)"),  # noqa: B008

@@ -93,6 +93,15 @@ remain visible in the redacted text.  A date is upgraded to ``DOB`` only when
 nearby lexical triggers such as "DOB", "Date of Birth" or "born" make the
 birthdate intent clear.
 
+## Legal aliases
+
+Alias labels defined with phrases such as ``hereinafter``, ``a/k/a`` (also known
+as), ``f/k/a`` (formerly known as) or ``d/b/a`` (doing business as) are detected
+as ``ALIAS_LABEL`` spans.  Only the alias term itself is captured – for example
+``"Buyer"`` or ``"Morgan"`` – while trigger words and punctuation are ignored.
+When a subject name appears nearby, the detector records it so later stages can
+link all references to a consistent pseudonym.
+
 ## Quick start (CLI)
 
 ```bash
