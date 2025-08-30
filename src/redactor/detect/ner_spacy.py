@@ -25,6 +25,7 @@ import re
 from redactor.config import ConfigModel
 
 from .base import DetectionContext, EntityLabel, EntitySpan
+from .names_person import score_person_name
 
 __all__ = ["SpacyNERDetector", "get_detector"]
 
@@ -123,6 +124,9 @@ class SpacyNERDetector:
         self._nlp: object | None = None
         self._mode: str | None = None
         self._confidence_base: float = 0.0
+        # Optional filtering of PERSON spans using name heuristics. Off by default.
+        # TODO: flip default to True once ``names_person`` proves stable.
+        self._use_name_filter = False
 
     def name(self) -> str:  # pragma: no cover - trivial
         return "ner_spacy"
@@ -243,8 +247,11 @@ class SpacyNERDetector:
                 }
                 label = label_map[ent.label_]
                 span_text = text[start:end]
-                if label is EntityLabel.PERSON and _is_role(span_text):
-                    continue
+                if label is EntityLabel.PERSON:
+                    if _is_role(span_text):
+                        continue
+                    if self._use_name_filter and score_person_name(span_text) < 0.60:
+                        continue
                 if _is_noise(span_text):
                     continue
 
@@ -265,6 +272,8 @@ class SpacyNERDetector:
                 start, end = _trim_right_punct(text, *match.span(0))
                 span_text = text[start:end]
                 if _is_role(span_text) or _is_noise(span_text):
+                    continue
+                if self._use_name_filter and score_person_name(span_text) < 0.60:
                     continue
                 spans.append(
                     EntitySpan(
