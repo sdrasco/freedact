@@ -51,6 +51,19 @@ pseudonym seed are provided via environment variables; set
 `REDACTOR_SEED_SECRET` (or a custom variable defined by
 `pseudonyms.seed.secret_env`) to deterministically seed pseudonyms.
 
+## Deterministic seeding
+
+Seeding controls how identifiers and random number generators are derived from
+input text. By default, identifiers are scoped to each document, so the same
+person in two files receives different pseudonyms. Setting
+`pseudonyms.cross_doc_consistency` to `true` switches to global scoping where
+the same entity maps to the same pseudonym across documents.
+
+Provide a secret via the `REDACTOR_SEED_SECRET` environment variable (or the
+name configured in `pseudonyms.seed.secret_env`) to cryptographically tie these
+values to your deployment. Omitting the secret still yields deterministic
+output but without cryptographic protection.
+
 ## Quick start (CLI)
 
 ```bash
