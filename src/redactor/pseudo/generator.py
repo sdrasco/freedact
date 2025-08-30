@@ -20,13 +20,20 @@ from __future__ import annotations
 import random
 
 from redactor.config import ConfigModel
+
 from .seed import canonicalize_key, doc_scope, rng_for, stable_id
 
 
 class PseudonymGenerator:
     """Generate deterministic placeholder pseudonyms."""
 
-    def __init__(self, cfg: ConfigModel, *, text: str | None = None, scope: bytes | None = None) -> None:
+    def __init__(
+        self,
+        cfg: ConfigModel,
+        *,
+        text: str | None = None,
+        scope: bytes | None = None,
+    ) -> None:
         """Initialize the generator.
 
         Parameters
@@ -81,7 +88,7 @@ class PseudonymGenerator:
     def phone(self, key: str) -> str:
         """Return a deterministic E.164-like US phone number placeholder."""
 
-        rng = self.rng('PHONE', key)
+        rng = self.rng("PHONE", key)
         seven = rng.randint(0, 9_999_999)
         return f"+1555{seven:07d}"
 

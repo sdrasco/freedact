@@ -1,5 +1,4 @@
 from __future__ import annotations
-from __future__ import annotations
 
 import re
 
@@ -55,4 +54,3 @@ def test_import_export() -> None:
     from redactor.pseudo import PseudonymGenerator as Exported
 
     assert Exported is PseudonymGenerator
-
