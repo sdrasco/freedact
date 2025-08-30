@@ -14,16 +14,24 @@ from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-# Optional NLP model (spaCy) for a first-pass PERSON entity detection.
+# Required NLP model (spaCy) for a first-pass PERSON entity detection.
 try:
     import spacy
+except Exception:
+    sys.stderr.write(
+        "[ERROR] Missing required dependency 'spacy'.\n"
+        "Install it with:\n    pip install spacy\n"
+    )
+    sys.exit(1)
 
-    try:
-        _NLP = spacy.load("en_core_web_sm")
-    except Exception:  # model not installed or other runtime issue
-        _NLP = None
-except Exception:  # spaCy not installed
-    _NLP = None
+try:
+    _NLP = spacy.load("en_core_web_sm")
+except Exception:
+    sys.stderr.write(
+        "[ERROR] Missing spaCy model 'en_core_web_sm'.\n"
+        "Install it with:\n    python -m spacy download en_core_web_sm\n"
+    )
+    sys.exit(1)
 
 # --- Required runtime check for 'unidecode' (hard requirement for normalization) ---
 try:
@@ -171,42 +179,41 @@ def replace_person_names(
         return namekey_to_placeholder[k]
 
     # -------------------------------------------------
-    # First pass: use spaCy NER if available to swap PERSON entities
+    # First pass: use spaCy NER to swap PERSON entities
     # -------------------------------------------------
-    if _NLP is not None:
-        doc = _NLP(text)
-        out_chunks: List[str] = []
-        last_end = 0
-        for ent in doc.ents:
-            if ent.label_ != "PERSON":
-                continue
-            start, end = ent.start_char, ent.end_char
-            raw = text[start:end]
-            if PLACEHOLDER_RE.match(raw) or raw.strip().upper() == "[REDACTED]":
-                continue
-            canonical = raw.strip()
-            alias_key = normalize_key(canonical)
-            if alias_key in alias_links:
-                canonical_full = alias_links[alias_key]
-                placeholder_full = assign_placeholder(canonical_full)
-                if normalize_key(canonical_full) != normalize_key(canonical):
-                    aliases = placeholder_map[placeholder_full]["aliases"]
-                    if canonical not in aliases:
-                        aliases.append(canonical)
-                placeholder = (
-                    placeholder_full.split()[0]
-                    if " " not in canonical
-                    else placeholder_full
-                )
-            else:
-                placeholder_full = assign_placeholder(canonical)
-                placeholder = placeholder_full
-            out_chunks.append(text[last_end:start])
-            out_chunks.append("[REDACTED]" if mask_mode else placeholder)
-            last_end = end
-            count += 1
-        out_chunks.append(text[last_end:])
-        text = "".join(out_chunks)
+    doc = _NLP(text)
+    out_chunks: List[str] = []
+    last_end = 0
+    for ent in doc.ents:
+        if ent.label_ != "PERSON":
+            continue
+        start, end = ent.start_char, ent.end_char
+        raw = text[start:end]
+        if PLACEHOLDER_RE.match(raw) or raw.strip().upper() == "[REDACTED]":
+            continue
+        canonical = raw.strip()
+        alias_key = normalize_key(canonical)
+        if alias_key in alias_links:
+            canonical_full = alias_links[alias_key]
+            placeholder_full = assign_placeholder(canonical_full)
+            if normalize_key(canonical_full) != normalize_key(canonical):
+                aliases = placeholder_map[placeholder_full]["aliases"]
+                if canonical not in aliases:
+                    aliases.append(canonical)
+            placeholder = (
+                placeholder_full.split()[0]
+                if " " not in canonical
+                else placeholder_full
+            )
+        else:
+            placeholder_full = assign_placeholder(canonical)
+            placeholder = placeholder_full
+        out_chunks.append(text[last_end:start])
+        out_chunks.append("[REDACTED]" if mask_mode else placeholder)
+        last_end = end
+        count += 1
+    out_chunks.append(text[last_end:])
+    text = "".join(out_chunks)
 
     # organization check
     def looks_like_org(s: str) -> bool:

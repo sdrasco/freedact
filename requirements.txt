@@ -3,3 +3,4 @@ python-docx
 reportlab
 pdfplumber
 spacy
+en-core-web-sm
