@@ -2,6 +2,7 @@
 
 from .account_ids import AccountIdDetector
 from .address_libpostal import AddressLineDetector
+from .aliases import AliasDetector
 from .bank_org import BankOrgDetector
 from .date_dob import DOBDetector
 from .date_generic import DateGenericDetector
@@ -16,4 +17,5 @@ __all__ = [
     "PhoneDetector",
     "DateGenericDetector",
     "DOBDetector",
+    "AliasDetector",
 ]
