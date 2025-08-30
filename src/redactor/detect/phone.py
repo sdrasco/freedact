@@ -90,7 +90,8 @@ def _phone_type_name(num: PhoneNumber) -> str:
     """Return the lower‑case name of the phone number type."""
 
     t = number_type(num)
-    return PhoneNumberType._VALUES_TO_NAMES.get(t, "unknown").lower()
+    name = PhoneNumberType._VALUES_TO_NAMES.get(t, "unknown")
+    return str(name).lower()
 
 
 # ---------------------------------------------------------------------------
