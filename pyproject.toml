@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2",
     "PyYAML>=6",
     "typer>=0.12",
+    "phonenumbers>=8.13.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -54,3 +55,7 @@ ignore = ["E203"]  # W503 deprecated
 python_version = "3.11"
 strict = true
 warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["phonenumbers", "phonenumbers.*"]
+ignore_missing_imports = true
