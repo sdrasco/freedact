@@ -7,6 +7,8 @@ def test_default_values() -> None:
     assert cfg.redact.generic_dates is False
     assert cfg.verification.fail_on_residual is True
     assert cfg.pseudonyms.cross_doc_consistency is False
+    assert cfg.detectors.coref.enabled is False
+    assert cfg.detectors.coref.backend == "auto"
     assert cfg.precedence == [
         "ACCOUNT_ID",
         "EMAIL",
