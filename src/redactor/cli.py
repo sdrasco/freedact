@@ -26,7 +26,7 @@ from pydantic import ValidationError
 from .config import ConfigModel, load_config
 from .detect.base import DetectionContext, Detector, EntitySpan
 from .io import read_file, write_file
-from .link import alias_resolver, span_merger
+from .link import alias_resolver, coref, span_merger
 from .preprocess import layout_reconstructor
 from .preprocess.normalizer import normalize
 from .replace.applier import apply_plan
@@ -56,7 +56,12 @@ def _safe_exit(code: int, msg: str | None = None) -> None:
 
 
 def _apply_overrides(
-    cfg: ConfigModel, *, keep_roles: bool | None, enable_ner: bool | None
+    cfg: ConfigModel,
+    *,
+    keep_roles: bool | None,
+    enable_ner: bool | None,
+    enable_coref: bool | None,
+    coref_backend: str | None,
 ) -> ConfigModel:
     """Return a copy of ``cfg`` with CLI overrides applied."""
 
@@ -65,6 +70,10 @@ def _apply_overrides(
         new_cfg.redact.alias_labels = "keep_roles" if keep_roles else "redact"
     if enable_ner is not None:
         new_cfg.detectors.ner.enabled = enable_ner
+    if enable_coref is not None:
+        new_cfg.detectors.coref.enabled = enable_coref
+    if coref_backend is not None:
+        new_cfg.detectors.coref.backend = coref_backend  # type: ignore[assignment]
     return new_cfg
 
 
@@ -141,6 +150,16 @@ def run(  # noqa: PLR0913
         "--enable-ner/--disable-ner",
         help="Toggle NER detector",
     ),
+    enable_coref: bool | None = typer.Option(  # noqa: B008
+        None,
+        "--enable-coref/--disable-coref",
+        help="Toggle coreference resolver",
+    ),
+    coref_backend: str | None = typer.Option(  # noqa: B008
+        None,
+        "--coref-backend",
+        help="Select coreference backend [auto|fastcoref|regex]",
+    ),
 ) -> dict[str, str]:
     """Run the full redaction pipeline on ``in_path`` writing to ``out_path``."""
 
@@ -152,7 +171,13 @@ def run(  # noqa: PLR0913
     if verbose:
         typer.echo("Loaded config", err=True)
 
-    cfg = _apply_overrides(cfg, keep_roles=keep_roles, enable_ner=enable_ner)
+    cfg = _apply_overrides(
+        cfg,
+        keep_roles=keep_roles,
+        enable_ner=enable_ner,
+        enable_coref=enable_coref,
+        coref_backend=coref_backend,
+    )
     strict_mode = cfg.verification.fail_on_residual if strict is None else strict
 
     # Read input
@@ -179,6 +204,10 @@ def run(  # noqa: PLR0913
 
         spans = layout_reconstructor.merge_address_lines_into_blocks(normalized, spans)
         spans, clusters = alias_resolver.resolve_aliases(normalized, spans, cfg)
+        if cfg.detectors.coref.enabled:
+            coref_result = coref.compute_coref(normalized, spans, cfg)
+            mapping = coref.unify_with_alias_clusters(spans, coref_result, clusters)
+            coref.assign_coref_entity_ids(spans, coref_result, mapping)
         merged_spans = span_merger.merge_spans(spans, cfg)
         if verbose:
             typer.echo(f"Merged to {len(merged_spans)} spans", err=True)

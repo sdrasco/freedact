@@ -162,6 +162,17 @@ model is unavailable, the detector falls back to lightweight pattern rules or a
 pure-Python regex engine. Setting `config.detectors.ner.require` to `true`
 raises an error instead of falling back.
 
+## Coreference (optional)
+
+Coreference links pronouns and short name variants to the same person so that
+different mentions receive consistent pseudonyms. Install the optional
+dependencies with `pip install .[coref]` and enable the feature via
+`detectors.coref.enabled: true`. By default the `auto` backend uses
+`fastcoref` when available and falls back to a lightweight regex heuristic.
+Pronouns themselves are never replaced; coref only assigns matching `entity_id`
+values to existing PERSON spans. Choose the regex backend for minimal
+dependencies or `fastcoref` for higher accuracy at the cost of a heavier model.
+
 ## Verification and leakage scoring
 
 After replacements are applied you can re-scan the redacted text for residual

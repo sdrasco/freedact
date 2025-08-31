@@ -89,11 +89,22 @@ class AddressSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CorefSettings(BaseModel):
+    """Coreference resolution settings."""
+
+    enabled: bool
+    backend: Literal["auto", "fastcoref", "regex"]
+    require: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DetectorsSettings(BaseModel):
     """Configuration for detector backends."""
 
     ner: NERSettings
     address: AddressSettings
+    coref: CorefSettings
 
     model_config = ConfigDict(extra="forbid")
 
@@ -174,6 +185,7 @@ __all__ = [
     "VerificationSettings",
     "NERSettings",
     "AddressSettings",
+    "CorefSettings",
     "DetectorsSettings",
     "deep_merge_dicts",
     "load_config",

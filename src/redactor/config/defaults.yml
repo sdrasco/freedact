@@ -42,6 +42,10 @@ detectors:
   address:
     backend: "auto"              # "usaddress" | "libpostal" | "auto"
     require: false
+  coref:
+    enabled: false
+    backend: "auto"              # "auto" | "fastcoref" | "regex"
+    require: false
 
 precedence:
   - ACCOUNT_ID
