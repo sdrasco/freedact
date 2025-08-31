@@ -21,6 +21,8 @@ import random
 
 from redactor.config import ConfigModel
 
+from . import address_rules, name_rules, number_rules
+from .case_preserver import format_like
 from .seed import canonicalize_key, doc_scope, rng_for, stable_id
 
 
@@ -64,6 +66,65 @@ class PseudonymGenerator:
 
         canonical = canonicalize_key(key)
         return rng_for(kind, canonical, cfg=self.cfg, scope=self.scope)
+
+    # -- Shape preserving helpers -----------------------------------------
+
+    def person_name_like(self, source: str, key: str) -> str:
+        """Return a person-like pseudonym shaped like ``source``."""
+
+        return name_rules.generate_person_like(source, key=key, gen=self)
+
+    def org_name_like(self, source: str, key: str) -> str:
+        """Return an organization-like pseudonym shaped like ``source``."""
+
+        return name_rules.generate_org_like(source, key=key, gen=self)
+
+    def bank_org_like(self, source: str, key: str) -> str:
+        """Return a bank organization name shaped like ``source``."""
+
+        return name_rules.generate_bank_org_like(source, key=key, gen=self)
+
+    def address_line_like(self, source: str, key: str, line_kind: str | None = None) -> str:
+        """Return a single address line shaped like ``source``."""
+
+        if line_kind == "unit":
+            return address_rules.generate_unit_line_like(source, key=key, gen=self)
+        if line_kind == "city_state_zip":
+            return address_rules.generate_city_state_zip_like(source, key=key, gen=self)
+        if line_kind == "street" or line_kind is None:
+            return address_rules.generate_street_line_like(source, key=key, gen=self)
+        if line_kind == "po_box":
+            rng = self.rng("ADDRESS_PO", key)
+            num = rng.randint(100, 99999)
+            return format_like(source, f"PO Box {num}", rng=rng)
+        return source
+
+    def address_block_like(
+        self, source_block: str, key: str, line_kinds: list[str] | None = None
+    ) -> str:
+        """Return an address block with each line pseudonymized."""
+
+        return address_rules.generate_address_block_like(
+            source_block, key=key, gen=self, line_kinds=line_kinds
+        )
+
+    def cc_like(self, source: str, key: str) -> str:
+        return number_rules.generate_cc_like(source, key=key, gen=self)
+
+    def routing_like(self, source: str, key: str) -> str:
+        return number_rules.generate_routing_like(source, key=key, gen=self)
+
+    def iban_like(self, source: str, key: str) -> str:
+        return number_rules.generate_iban_like(source, key=key, gen=self)
+
+    def ssn_like(self, source: str, key: str) -> str:
+        return number_rules.generate_ssn_like(source, key=key, gen=self)
+
+    def ein_like(self, source: str, key: str) -> str:
+        return number_rules.generate_ein_like(source, key=key, gen=self)
+
+    def generic_digits_like(self, source: str, key: str) -> str:
+        return number_rules.generate_generic_digits_like(source, key=key, gen=self)
 
     def person_name(self, key: str) -> str:
         """Return a deterministic placeholder for a person name."""
