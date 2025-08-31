@@ -1,0 +1,11 @@
+John Doe
+366 Broadway
+San Francisco, CA 94105
+Hereinafter “Morgan”
+Date of Birth: July 4, 1982
+
+Fred Doe
+366 Broadway
+San Francisco, CA 94105
+Hereinafter “John”
+Date of Birth: December 21, 1975

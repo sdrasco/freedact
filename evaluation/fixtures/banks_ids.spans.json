@@ -1,0 +1,13 @@
+{
+  "doc": "banks_ids.txt",
+  "schema_version": 1,
+  "spans": [
+    {"start": 11, "end": 27, "label": "BANK_ORG", "text": "Chase Bank, N.A."},
+    {"start": 33, "end": 47, "label": "ACCOUNT_ID", "subtype": "generic", "text": "0034-567-89012"},
+    {"start": 71, "end": 80, "label": "ACCOUNT_ID", "subtype": "routing_aba", "text": "021000021"},
+    {"start": 88, "end": 107, "label": "ACCOUNT_ID", "subtype": "cc", "text": "4111 1111 1111 1111"},
+    {"start": 113, "end": 124, "label": "ACCOUNT_ID", "subtype": "ssn", "text": "123-45-6789"},
+    {"start": 133, "end": 141, "label": "ACCOUNT_ID", "subtype": "swift_bic", "text": "DEUTDEFF"},
+    {"start": 149, "end": 176, "label": "ACCOUNT_ID", "subtype": "iban", "text": "GB82 WEST 1234 5698 7654 32"}
+  ]
+}
