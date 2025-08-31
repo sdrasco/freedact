@@ -162,6 +162,25 @@ model is unavailable, the detector falls back to lightweight pattern rules or a
 pure-Python regex engine. Setting `config.detectors.ner.require` to `true`
 raises an error instead of falling back.
 
+## Verification and leakage scoring
+
+After replacements are applied you can re-scan the redacted text for residual
+PII.  The verification scanner reuses the same detectors and produces a
+structured report with counts by entity label and an overall leakage score.
+
+```python
+from redactor.config import load_config
+from redactor.verify.scanner import scan_text
+
+cfg = load_config()
+report = scan_text("Contact john@acme.com", cfg)
+print(report.counts_by_label)  # {'EMAIL': 1}
+print(report.score)            # 3
+```
+
+The command line interface honours `cfg.verification.fail_on_residual` and will
+exit with a non-zero status when any residual entities are found.
+
 ## Name heuristics
 
 `redactor.detect.names_person` offers dependency-free helpers for judging
