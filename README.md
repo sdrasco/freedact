@@ -71,6 +71,23 @@ such as `PERSON_xxxxx` or `ORG_xxxxx`. These tokens are stable for a given
 configuration and scope but are clearly fake. Future milestones will introduce
 shape-preserving fakes and integrate them with case/format preservation.
 
+## Pseudonym rules (shape-preserving)
+
+This milestone adds a library of lightweight generators that craft realistic
+looking replacements while keeping the visible shape of the source text.
+Examples:
+
+* Names – `JOHN DOE` → `ALAN SMITH`, `J.D.` → `A.C.`
+* Organizations – `Acme LLC` → `Apex Vector LLC`
+* Banks – `Chase Bank, N.A.` → `Summit Bank, N.A.`
+* Addresses – ``1600 Pennsylvania Ave NW`` → ``2458 Oak St NW``
+* Numbers – credit cards, routing numbers and IDs retain their punctuation and
+  pass simple checksum rules.
+
+Determinism is still guaranteed via the seeding utilities.  Downstream
+verification can choose to treat these fakes as allowable data or filter them
+from leakage scoring using the audit map.
+
 ## Case and format preservation
 
 Pseudonym replacements mirror the casing and punctuation shape of the source
