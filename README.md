@@ -209,6 +209,28 @@ pytest -k fixtures_integrity
 These samples contain synthetic PII for testing purposes only and should not be
 shared outside this repository.
 
+## Metrics
+
+The `evaluation.metrics` module offers a lightweight harness for measuring detection quality against the bundled fixtures. Spans are matched using intersection-over-union (IoU) with a default threshold of `0.5`. *Micro* scores sum counts across labels while *macro* scores average per label.
+
+Run the harness locally:
+
+```python
+from redactor.config import load_config
+from evaluation.metrics import evaluate_all_fixtures
+
+cfg = load_config()
+results = evaluate_all_fixtures(cfg)
+print(results["aggregate"].micro)
+```
+
+Account numbers can be evaluated at different granularities. The default `granularity="coarse"` collapses subtypes to `ACCOUNT_ID` whereas `granularity="fine"` retains subtype labels such as `ACCOUNT_ID:cc` or `ACCOUNT_ID:iban`:
+
+```python
+evaluate_all_fixtures(cfg, granularity="fine")
+```
+
+
 ## Name heuristics
 
 `redactor.detect.names_person` offers dependency-free helpers for judging
