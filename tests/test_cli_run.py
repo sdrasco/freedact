@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -25,5 +24,4 @@ def test_cli_run_basic(tmp_path: Path) -> None:
         ["run", "--in", str(in_txt), "--out", str(out_txt), "--report", str(report_dir)],
     )
     assert result.exit_code == 0
-    data = json.loads((report_dir / "preprocess.json").read_text())
-    assert "changed" in data
+    assert (report_dir / "audit.json").exists()

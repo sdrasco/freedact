@@ -359,8 +359,16 @@ def write_report_bundle(
 
     if verification_report is not None:
         verification_path = report_path / "verification.json"
+        ver_dict = asdict(verification_report)
+        for key in ("findings", "ignored"):
+            items = ver_dict.get(key)
+            if isinstance(items, list):
+                for item in items:
+                    label = item.get("label")
+                    if isinstance(label, EntityLabel):
+                        item["label"] = label.name
         with verification_path.open("w", encoding="utf-8") as f:
-            json.dump(asdict(verification_report), f, ensure_ascii=False, indent=2)
+            json.dump(ver_dict, f, ensure_ascii=False, indent=2)
         written["verification.json"] = str(verification_path)
 
     return written
