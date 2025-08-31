@@ -210,7 +210,24 @@ refine and validate its output.
 ## Quick start (CLI)
 
 ```bash
-redactor run --in samples/snippet.txt --out out/sanitized.txt --report out/report
+redactor run \
+  --in samples/snippet.txt \
+  --out out/sanitized.txt \
+  --report out/report \
+  --strict
 ```
 
-Note: currently runs preprocessing only; full redaction pipeline will be wired in later milestones.
+The command reads ``snippet.txt``, runs the full redaction pipeline and writes
+``sanitized.txt`` alongside an audit bundle in ``out/report`` containing
+``audit.json``, ``diff.html``, ``plan.json`` and ``verification.json``.
+
+Useful flags:
+
+* ``--keep-roles`` / ``--redact-roles`` – control whether role aliases such as
+  "Buyer" are preserved.
+* ``--enable-ner`` / ``--disable-ner`` – toggle the spaCy named‑entity detector.
+* ``--strict`` – exit with code ``6`` if verification finds residual PII
+  (default is taken from the configuration).
+
+Exit codes: ``0`` success, ``3`` I/O error, ``4`` configuration error,
+``5`` pipeline error, ``6`` verification failure.

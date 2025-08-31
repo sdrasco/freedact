@@ -1,35 +1,105 @@
-"""Typer-based command line interface for the redactor pipeline.
+"""Typer-based command line interface for the redaction pipeline.
 
-This module exposes a minimal CLI focused on the early preprocessing stage
-`read -> normalize -> write`.  Only plain text (``.txt``) files are supported
-at the moment.  Future milestones will expand this interface without changing
-its surface.
+The ``run`` command executes the full redaction workflow for plain text files
+and is intentionally minimal: read and normalize the input, detect entities,
+link/merge spans, build and apply a replacement plan, verify residual PII and
+optionally emit an audit bundle.  Heavy dependencies such as spaCy are imported
+on demand so that basic invocations remain lightweight.
 
 Exit codes
 ----------
-0 - success
-3 - I/O error (read/write/unsupported format)
-4 - configuration error
+0 success
+3 I/O error (missing reader/writer, filesystem issues)
+4 configuration error
+5 pipeline error (unexpected exception during detection/link/replace)
+6 verification failure (strict mode with residuals > 0)
 """
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
+from pydantic import ValidationError
 
-from .config import load_config
+from .config import ConfigModel, load_config
+from .detect.base import DetectionContext, Detector, EntitySpan
 from .io import read_file, write_file
+from .link import alias_resolver, span_merger
+from .preprocess import layout_reconstructor
 from .preprocess.normalizer import normalize
+from .replace.applier import apply_plan
+from .replace.plan_builder import build_replacement_plan
 from .utils.errors import UnsupportedFormatError
+from .utils.textspan import build_line_starts
+from .verify import report as verify_report
+from .verify import scanner
 
 app = typer.Typer(
     name="redactor",
     help="Utilities for the redaction pipeline. Use 'redactor run' to execute the pipeline.",
 )
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _safe_exit(code: int, msg: str | None = None) -> None:
+    """Exit the CLI with ``code`` emitting ``msg`` to stderr if provided."""
+
+    if msg:
+        typer.echo(msg, err=True)
+    raise typer.Exit(code)
+
+
+def _apply_overrides(
+    cfg: ConfigModel, *, keep_roles: bool | None, enable_ner: bool | None
+) -> ConfigModel:
+    """Return a copy of ``cfg`` with CLI overrides applied."""
+
+    new_cfg = cfg.model_copy(deep=True)
+    if keep_roles is not None:
+        new_cfg.redact.alias_labels = "keep_roles" if keep_roles else "redact"
+    if enable_ner is not None:
+        new_cfg.detectors.ner.enabled = enable_ner
+    return new_cfg
+
+
+def _run_detectors(text: str, cfg: ConfigModel, context: DetectionContext) -> list[EntitySpan]:
+    """Instantiate and run detectors returning detected spans."""
+
+    from .detect.account_ids import AccountIdDetector
+    from .detect.address_libpostal import AddressLineDetector
+    from .detect.aliases import AliasDetector
+    from .detect.bank_org import BankOrgDetector
+    from .detect.date_dob import DOBDetector
+    from .detect.date_generic import DateGenericDetector
+    from .detect.email import EmailDetector
+    from .detect.phone import PhoneDetector
+
+    detectors: list[Detector] = [
+        EmailDetector(),
+        PhoneDetector(),
+        AccountIdDetector(),
+        BankOrgDetector(),
+        AddressLineDetector(),
+        DateGenericDetector(),
+        DOBDetector(),
+        AliasDetector(),
+    ]
+
+    if cfg.detectors.ner.enabled:
+        from .detect.ner_spacy import SpacyNERDetector
+
+        detectors.append(SpacyNERDetector(cfg))
+
+    spans: list[EntitySpan] = []
+    for det in detectors:
+        spans.extend(det.detect(text, context))
+    return spans
 
 
 @app.callback()
@@ -39,14 +109,14 @@ def main() -> None:
 
 
 @app.command()
-def run(
+def run(  # noqa: PLR0913
     in_path: Path = typer.Option(..., "--in", help="Input file (.txt only for now)"),  # noqa: B008
     out_path: Path = typer.Option(..., "--out", help="Output file (.txt)"),  # noqa: B008
     config_path: Optional[Path] = typer.Option(  # noqa: B008
         None, "--config", help="YAML config to override defaults"
     ),
     report_dir: Optional[Path] = typer.Option(  # noqa: B008
-        None, "--report", help="Optional directory to write a small preprocessing report"
+        None, "--report", help="Directory to write audit artifacts"
     ),
     encoding_in: str = typer.Option("utf-8-sig", help="Input file encoding"),  # noqa: B008
     encoding_out: str = typer.Option("utf-8", help="Output file encoding"),  # noqa: B008
@@ -56,62 +126,106 @@ def run(
     verbose: bool = typer.Option(  # noqa: B008
         False, "--verbose", "-v", help="Emit minimal progress messages to stderr"
     ),
-) -> None:
-    """Run the preprocessing pipeline: read -> normalize -> write.
-
-    Only plain text files are handled.  This command performs no redaction yet;
-    it simply normalizes text.  Exit codes: 0 success, 3 I/O error, 4 config
-    error.
-    """
+    strict: bool | None = typer.Option(  # noqa: B008
+        None,
+        "--strict/--no-strict",
+        help="Exit non-zero when verification residuals remain",
+    ),
+    keep_roles: bool | None = typer.Option(  # noqa: B008
+        None,
+        "--keep-roles/--redact-roles",
+        help="Override alias label policy",
+    ),
+    enable_ner: bool | None = typer.Option(  # noqa: B008
+        None,
+        "--enable-ner/--disable-ner",
+        help="Toggle NER detector",
+    ),
+) -> dict[str, str]:
+    """Run the full redaction pipeline on ``in_path`` writing to ``out_path``."""
 
     # Load configuration
     try:
-        load_config(config_path)
-    except Exception as exc:  # pragma: no cover - diverse exceptions
-        typer.echo(str(exc).splitlines()[0], err=True)
-        raise typer.Exit(code=4) from None
+        cfg = load_config(config_path)
+    except (ValidationError, Exception) as exc:  # pragma: no cover - diverse
+        _safe_exit(4, str(exc).splitlines()[0])
     if verbose:
         typer.echo("Loaded config", err=True)
+
+    cfg = _apply_overrides(cfg, keep_roles=keep_roles, enable_ner=enable_ner)
+    strict_mode = cfg.verification.fail_on_residual if strict is None else strict
 
     # Read input
     try:
         text = read_file(in_path, encoding=encoding_in)
-        input_bytes = in_path.stat().st_size
     except (FileNotFoundError, UnsupportedFormatError, OSError) as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(code=3) from None
+        _safe_exit(3, str(exc))
     if verbose:
         typer.echo(f"Read {len(text)} chars", err=True)
 
     # Normalize
     norm = normalize(text)
+    normalized = norm.text
     if verbose:
         typer.echo(f"Normalized (changed={norm.changed})", err=True)
 
-    # Write output
+    line_starts = build_line_starts(normalized)
+    context = DetectionContext(locale=cfg.locale, line_starts=line_starts, config=cfg)
+
+    try:
+        spans = _run_detectors(normalized, cfg, context)
+        if verbose:
+            typer.echo(f"Detected {len(spans)} spans", err=True)
+
+        spans = layout_reconstructor.merge_address_lines_into_blocks(normalized, spans)
+        spans, clusters = alias_resolver.resolve_aliases(normalized, spans, cfg)
+        merged_spans = span_merger.merge_spans(spans, cfg)
+        if verbose:
+            typer.echo(f"Merged to {len(merged_spans)} spans", err=True)
+
+        plan = build_replacement_plan(normalized, merged_spans, cfg, clusters=clusters)
+        if verbose:
+            typer.echo(f"Built plan with {len(plan)} entries", err=True)
+
+        redacted_text, applied_plan = apply_plan(normalized, plan)
+        if verbose:
+            typer.echo("Applied plan", err=True)
+
+        verification_report = scanner.scan_text(redacted_text, cfg, applied_plan=applied_plan)
+        if verbose:
+            typer.echo(
+                f"Verification residuals={verification_report.residual_count} "
+                f"score={verification_report.score}",
+                err=True,
+            )
+    except Exception as exc:  # pragma: no cover - unexpected
+        msg = str(exc)
+        if verbose:
+            msg = f"{type(exc).__name__}: {msg}"
+        _safe_exit(5, msg)
+
+    # Write outputs
     newline_arg = newline_out if newline_out is not None else ""
     try:
-        write_file(out_path, norm.text, encoding=encoding_out, newline=newline_arg)
+        write_file(out_path, redacted_text, encoding=encoding_out, newline=newline_arg)
     except (UnsupportedFormatError, OSError) as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(code=3) from None
-    if verbose:
-        typer.echo("Wrote output", err=True)
+        _safe_exit(3, str(exc))
 
-    # Optional report
+    written: dict[str, str] = {"out": str(out_path)}
     if report_dir is not None:
-        report_dir.mkdir(parents=True, exist_ok=True)
-        report_path = report_dir / "preprocess.json"
-        report = {
-            "doc_id": None,
-            "input_bytes": input_bytes,
-            "input_chars": len(text),
-            "output_chars": len(norm.text),
-            "changed": norm.changed,
-            "removed_zero_width_chars": None,
-            "dehyphenations": None,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        bundle = verify_report.write_report_bundle(
+            report_dir,
+            text_before=normalized,
+            text_after=redacted_text,
+            plan=applied_plan,
+            cfg=cfg,
+            verification_report=verification_report,
+        )
+        written.update(bundle)
         if verbose:
-            typer.echo(f"Report written to {report_path}", err=True)
+            typer.echo(f"Report written to {report_dir}", err=True)
+
+    if strict_mode and verification_report.residual_count > 0:
+        _safe_exit(6, None)
+
+    return written
