@@ -245,6 +245,20 @@ Beethoven`` score as names, while ``Bank of America``, ``Buyer`` and
 ``UNITED STATES`` do not. NER remains the primary detector; these heuristics
 refine and validate its output.
 
+## Fuzz testing
+
+The test suite includes deterministic fuzz tests that stress the pipeline with
+small but realistic perturbations. Variants insert zero-width characters, swap
+straight and curly quotes, replace spaces with non-breaking spaces, hyphenate
+long words, shuffle alias/DOB labels and mix line-ending styles.
+
+Run the fuzz tests locally with::
+
+    REDACTOR_FUZZ_N=50 pytest -k fuzz
+
+Each fixture derives its base seed from the fixture name so failures are
+reproducible across runs and platforms.
+
 ## Quick start (CLI)
 
 ```bash
