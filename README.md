@@ -136,6 +136,22 @@ pseudonym replacements remain consistent.  Role aliases like ``Buyer`` can be
 kept verbatim by setting ``redact.alias_labels`` to ``"keep_roles"`` – they are
 still linked for clustering but marked to skip replacement.
 
+## Replacement planning and application
+
+Detected spans are converted into a replacement plan that records the
+character offsets and final pseudonyms to insert.  Entries are applied in
+reverse order so indices remain valid.  Role labels may be preserved when
+``redact.alias_labels`` is set to ``"keep_roles"`` and generic dates remain
+unless ``redact.generic_dates`` is enabled.
+
+```text
+Before: John Doe (the "Buyer") was born on July 4, 1982.
+After:  Alan Smith (the "Buyer") was born on May 9, 1960.
+```
+
+The applied plan provides an audit trail showing which spans were replaced and
+with what pseudonyms.
+
 ## NER (optional)
 
 Named-entity recognition for people, organizations and locations is provided
