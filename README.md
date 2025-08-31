@@ -110,6 +110,15 @@ as ``ALIAS_LABEL`` spans.  Only the alias term itself is captured – for exampl
 When a subject name appears nearby, the detector records it so later stages can
 link all references to a consistent pseudonym.
 
+## Alias resolution and propagation
+
+Alias definitions are linked to their subjects and grouped into stable entity
+clusters.  Once an alias such as ``"Morgan"`` is defined for ``John Doe``, every
+later mention of ``Morgan`` is tagged with the same cluster identifier so
+pseudonym replacements remain consistent.  Role aliases like ``Buyer`` can be
+kept verbatim by setting ``redact.alias_labels`` to ``"keep_roles"`` – they are
+still linked for clustering but marked to skip replacement.
+
 ## NER (optional)
 
 Named-entity recognition for people, organizations and locations is provided
