@@ -85,6 +85,14 @@ Street, unit, city/state/ZIP and PO Box lines are detected using the
 address block so redaction replaces the entire address at once.  The merger is
 layout-aware and tolerates a single blank line between components.
 
+## Global span merger
+
+Detectors often emit overlapping spans describing the same text.  A global
+merger resolves these conflicts by applying a configurable precedence order and
+deterministic tie-breakers.  Within the same precedence tier, longer spans win
+over shorter ones and higher confidence scores break ties.  Address line spans
+are therefore typically superseded by their merged multi-line address blocks.
+
 ## Dates vs DOBs
 
 The redactor differentiates between general dates and dates of birth.  Dates in

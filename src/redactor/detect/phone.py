@@ -26,6 +26,7 @@ overlapping email will take precedence.
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from phonenumbers import (
     SUPPORTED_REGIONS,
@@ -54,13 +55,8 @@ TRAILING_PUNCTUATION = "),]};:,.!?»”’>"
 _NO_PREFIX_RE = re.compile(r"(?i)No\.\s*$")
 
 
-def _lookup_leniency(name: str) -> Leniency:
-    """Return ``Leniency`` enum member ``name`` if available.
-
-    ``libphonenumbers`` occasionally changes available leniencies.  This helper
-    looks up the given name and falls back to ``Leniency.VALID`` if the desired
-    value is not present in the installed version.
-    """
+def _lookup_leniency(name: str) -> int:
+    """Return the numeric value of leniency ``name`` if available."""
 
     return getattr(Leniency, name, Leniency.VALID)
 
@@ -82,7 +78,7 @@ def normalize_region(locale: str | None) -> str | None:
 
 
 # Determine leniency and associated confidence score at import time.
-_LENIENCY = _lookup_leniency("STRICT_GROUPING")
+_LENIENCY: Leniency = cast(Leniency, _lookup_leniency("STRICT_GROUPING"))
 _CONFIDENCE = 0.99 if getattr(_LENIENCY, "name", "") == "STRICT_GROUPING" else 0.98
 
 
@@ -90,7 +86,8 @@ def _phone_type_name(num: PhoneNumber) -> str:
     """Return the lower‑case name of the phone number type."""
 
     t = number_type(num)
-    name = PhoneNumberType._VALUES_TO_NAMES.get(t, "unknown")
+    name_map = getattr(PhoneNumberType, "_VALUES_TO_NAMES", {})
+    name = name_map.get(t, "unknown")
     return str(name).lower()
 
 
@@ -112,7 +109,7 @@ class PhoneDetector:
         """Detect phone numbers in ``text``."""
 
         region = normalize_region(context.locale if context else None)
-        matcher = PhoneNumberMatcher(text, region, leniency=self._leniency)
+        matcher = PhoneNumberMatcher(text, region, leniency=cast(int, self._leniency))
 
         spans: list[EntitySpan] = []
         for match in matcher:
@@ -136,7 +133,7 @@ class PhoneDetector:
                 end -= 1
                 matched_text = matched_text[:-1]
 
-            attrs = {
+            attrs: dict[str, object] = {
                 "e164": format_number(num, PhoneNumberFormat.E164),
                 "national": format_number(num, PhoneNumberFormat.NATIONAL),
                 "international": format_number(num, PhoneNumberFormat.INTERNATIONAL),

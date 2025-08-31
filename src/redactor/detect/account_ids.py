@@ -23,12 +23,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List
+from typing import Any, List, cast
 
 from stdnum import iban, iso9362, luhn
 from stdnum.us import ein as us_ein
-from stdnum.us import routing_number
 from stdnum.us import ssn as us_ssn
+
+try:
+    from stdnum.us import routing_number  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover - missing module
+    routing_number = cast(Any, None)
 
 from .base import DetectionContext, EntityLabel, EntitySpan
 
@@ -140,7 +144,7 @@ class AccountIdDetector:
                 continue
             end, raw = _trim(text, start, end)
             candidate = raw.upper()
-            if not iso9362.is_valid(candidate):
+            if not iso9362.is_valid(candidate):  # type: ignore[attr-defined]
                 continue
             attrs = {
                 "subtype": "swift_bic",
@@ -167,6 +171,8 @@ class AccountIdDetector:
             if not any(keyword in context_window for keyword in _ROUTING_KEYWORDS):
                 continue
             end, raw = _trim(text, start, end)
+            if routing_number is None:
+                continue
             if not routing_number.is_valid(raw):
                 continue
             attrs = {
