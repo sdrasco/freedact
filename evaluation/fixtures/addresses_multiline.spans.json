@@ -1,0 +1,11 @@
+{
+  "doc": "addresses_multiline.txt",
+  "schema_version": 1,
+  "spans": [
+    {"start": 0, "end": 33, "label": "ADDRESS_BLOCK", "text": "Address: 1600 Pennsylvania Ave NW"},
+    {"start": 34, "end": 43, "label": "ADDRESS_BLOCK", "text": "Suite 210"},
+    {"start": 44, "end": 64, "label": "ADDRESS_BLOCK", "text": "Washington, DC 20500"},
+    {"start": 66, "end": 77, "label": "ADDRESS_BLOCK", "text": "123 Main St"},
+    {"start": 78, "end": 99, "label": "ADDRESS_BLOCK", "text": "Springfield, IL 62704"}
+  ]
+}

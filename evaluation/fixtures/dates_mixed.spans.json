@@ -1,0 +1,9 @@
+{
+  "doc": "dates_mixed.txt",
+  "schema_version": 1,
+  "spans": [
+    {"start": 12, "end": 24, "label": "DATE_GENERIC", "text": "July 4, 1982"},
+    {"start": 30, "end": 40, "label": "DOB", "text": "12/21/1975"},
+    {"start": 47, "end": 57, "label": "DATE_GENERIC", "text": "2020-01-31"}
+  ]
+}

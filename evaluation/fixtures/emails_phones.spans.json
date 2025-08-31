@@ -1,0 +1,10 @@
+{
+  "doc": "emails_phones.txt",
+  "schema_version": 1,
+  "spans": [
+    {"start": 9, "end": 29, "label": "EMAIL", "text": "john.doe@example.com"},
+    {"start": 31, "end": 57, "label": "EMAIL", "text": "user+tag@sub.example.co.uk"},
+    {"start": 66, "end": 91, "label": "PHONE", "text": "+1 (212) 555-0000 ext. 23"},
+    {"start": 93, "end": 105, "label": "PHONE", "text": "415-555-2671"}
+  ]
+}
