@@ -18,6 +18,12 @@ NER and coreference resolution are disabled by default and require installing
 their respective extras. The base install already includes phone number and
 account detectors.
 
+## CI
+
+The project uses GitHub Actions to run linting, formatting checks, type
+checking and tests on Python 3.11. Performance tests are skipped in CI by
+default by setting `SKIP_PERF_TESTS=1`.
+
 ## Architecture at a glance
 
 ### Top-level modules
