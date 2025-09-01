@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import os
 import random
 import re
 import unicodedata
@@ -75,28 +76,42 @@ def doc_hash(text: str) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def get_secret_bytes(cfg: ConfigModel, *, require: bool = False) -> bytes:
-    """Return the seed secret as bytes.
+def _read_secret_str(cfg: ConfigModel) -> str | None:
+    """Return the seed secret from env or config without logging it."""
 
-    Parameters
-    ----------
-    cfg:
-        Configuration model holding the pseudonym seed.
-    require:
-        If ``True`` and the secret is missing, ``ValueError`` is raised.
-
-    Notes
-    -----
-    An empty secret reduces security; callers may choose ``require=True`` in
-    stricter modes.  This function never logs or prints the secret.
-    """
-
+    env_val = os.environ.get("REDACTOR_SEED_SECRET")
+    if env_val:
+        return env_val
     secret = cfg.pseudonyms.seed.secret
+    if secret is None:
+        return None
+    val = secret.get_secret_value()
+    return val or None
+
+
+def get_secret_bytes(cfg: ConfigModel, *, require: bool = False) -> bytes:
+    """Return the seed secret as bytes."""
+
+    secret = _read_secret_str(cfg)
     if secret is None:
         if require:
             raise ValueError("Missing pseudonym seed secret")
         return b""
-    return secret.get_secret_value().encode("utf-8")
+    return secret.encode("utf-8")
+
+
+def ensure_secret_present(cfg: ConfigModel, *, strict: bool) -> bool:
+    """Check whether a non-empty seed secret is configured."""
+
+    secret = _read_secret_str(cfg)
+    if secret:
+        return True
+    if strict:
+        raise ValueError(
+            "Pseudonym seed secret is required but not set. "
+            "Set REDACTOR_SEED_SECRET or configure cfg.pseudonyms.seed.secret."
+        )
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +228,7 @@ __all__ = [
     "canonicalize_key",
     "doc_hash",
     "get_secret_bytes",
+    "ensure_secret_present",
     "doc_scope",
     "stable_id",
     "rng_for",

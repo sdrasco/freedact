@@ -24,7 +24,7 @@ from pathlib import Path
 # No external dependencies; typing helpers are minimal.
 from redactor.config import ConfigModel
 from redactor.detect.base import EntityLabel
-from redactor.pseudo.seed import doc_hash, get_secret_bytes
+from redactor.pseudo.seed import doc_hash, ensure_secret_present
 from redactor.replace.plan_builder import PlanEntry
 
 from .scanner import VerificationReport
@@ -182,7 +182,7 @@ def summarize_audit(
     generated_at = datetime.utcnow().isoformat()
     digest = doc_hash(text_before)
     doc_hash_b32 = base64.b32encode(digest).decode("ascii").lower().rstrip("=")
-    seed_present = bool(get_secret_bytes(cfg))
+    seed_present = ensure_secret_present(cfg, strict=False)
 
     verification_dict: dict[str, object] | None = None
     if verification_report is not None:

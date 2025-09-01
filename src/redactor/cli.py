@@ -39,6 +39,7 @@ from .io import read_file, write_file
 from .link import alias_resolver, coref, span_merger
 from .preprocess import layout_reconstructor
 from .preprocess.normalizer import normalize
+from .pseudo.seed import ensure_secret_present
 from .replace.applier import apply_plan
 from .replace.plan_builder import build_replacement_plan
 from .utils.errors import UnsupportedFormatError
@@ -197,6 +198,11 @@ def run(  # noqa: PLR0913
     verbose: bool = typer.Option(  # noqa: B008
         False, "--verbose", "-v", help="Emit minimal progress messages to stderr"
     ),
+    require_secret: bool = typer.Option(  # noqa: B008
+        False,
+        "--require-secret/--no-require-secret",
+        help="Fail if pseudonym seed secret is not set (REDACTOR_SEED_SECRET or config)",
+    ),
     strict: bool | None = typer.Option(  # noqa: B008
         None,
         "--strict/--no-strict",
@@ -241,6 +247,11 @@ def run(  # noqa: PLR0913
         coref_backend=coref_backend,
     )
     strict_mode = cfg.verification.fail_on_residual if strict is None else strict
+
+    try:
+        ensure_secret_present(cfg, strict=require_secret)
+    except ValueError as exc:
+        _safe_exit(4, str(exc) if verbose else None)
 
     # Read input
     try:

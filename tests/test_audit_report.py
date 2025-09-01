@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from redactor.config import load_config
@@ -71,8 +72,14 @@ def test_audit_workflow(tmp_path: Path) -> None:
     assert summary.counts_by_label == {"PERSON": 1, "ALIAS_LABEL": 1, "EMAIL": 1}
     assert summary.deltas_total == sum(e.length_delta for e in entries)
     assert summary.doc_hash_b32
-    assert isinstance(summary.seed_present, bool)
+    assert summary.seed_present is True
     assert verification_dict is None
+
+    cfg_no = load_config(env={})
+    summary_no, _ = summarize_audit(before, entries, cfg=cfg_no, verification_report=None)
+    assert summary_no.seed_present is False
+    summary_json = json.dumps(asdict(summary))
+    assert "s3cret" not in summary_json
 
     html = generate_diff_html(before, after, entries)
     assert '<span id="r0001"' in html
