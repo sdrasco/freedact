@@ -28,10 +28,6 @@ from __future__ import annotations
 import re
 from typing import cast
 
-from ..utils.constants import rtrim_index
-
-from ..utils.constants import rtrim_index
-
 from phonenumbers import (
     SUPPORTED_REGIONS,
     Leniency,
@@ -46,6 +42,7 @@ from phonenumbers import (
     region_code_for_number,
 )
 
+from ..utils.constants import rtrim_index
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["PhoneDetector", "get_detector"]

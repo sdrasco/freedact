@@ -165,5 +165,6 @@ if __name__ == "__main__":  # pragma: no cover - convenience wrapper
     for item in out:
         total_ms = item["stages"]["total"] * 1000.0  # type: ignore[index]
         print(
-            f"{item['name']:<20} {item['chars']:>6} {item['repeat']:>6} {str(item['ner']):>3} {total_ms:>9.1f}"
+            f"{item['name']:<20} {item['chars']:>6} {item['repeat']:>6} "
+            f"{str(item['ner']):>3} {total_ms:>9.1f}"
         )

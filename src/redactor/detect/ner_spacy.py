@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import re
 
-from ..utils.constants import rtrim_index
 from redactor.config import ConfigModel
 
+from ..utils.constants import rtrim_index
 from .base import DetectionContext, EntityLabel, EntitySpan
 from .names_person import score_person_name
 
