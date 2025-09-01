@@ -99,6 +99,6 @@ class DetectionContext:
     """Optional context information supplied to detectors."""
 
     doc_id: str | None = None
-    locale: str | None = None
+    locale: str | None = "US"
     line_starts: tuple[int, ...] | None = None
     config: object | None = None

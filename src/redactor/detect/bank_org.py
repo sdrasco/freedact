@@ -188,9 +188,20 @@ class BankOrgDetector:
         def handle_matches(matches: Iterable[re.Match[str]], kind: str, hint: str) -> None:
             for m in matches:
                 start, end = m.span()
-                end = rtrim_index(text, end)
-                span_text = text[start:end]
                 suffix_raw = m.groupdict().get("suffix")
+                has_suffix_dot = bool(
+                    suffix_raw
+                    and (
+                        suffix_raw.rstrip().endswith(".") or (end < len(text) and text[end] == ".")
+                    )
+                )
+                if has_suffix_dot and end < len(text) and text[end] == ".":
+                    end += 1
+                protected_end = end if has_suffix_dot else None
+                end = rtrim_index(text, end)
+                if protected_end is not None and end < protected_end:
+                    end = protected_end
+                span_text = text[start:end]
 
                 # Exclusion heuristics for patterns containing the word "Bank".
                 if "Bank" in span_text:
