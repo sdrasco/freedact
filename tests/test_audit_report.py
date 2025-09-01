@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
+
 from redactor.config import load_config
 from redactor.detect.base import EntityLabel
 from redactor.replace.applier import apply_plan
@@ -106,3 +108,71 @@ def test_audit_workflow(tmp_path: Path) -> None:
         e["length_delta"] for e in audit_data["entries"]
     )
     assert "s3cret" not in json.dumps(audit_data)
+
+
+def test_seed_presence_signal() -> None:
+    before = "John Doe\n"
+    plan = [
+        PlanEntry(
+            start=0,
+            end=8,
+            replacement="Jane Roe",
+            label=EntityLabel.PERSON,
+            entity_id=None,
+            span_id=None,
+            meta={"source": "manual"},
+        )
+    ]
+    after, _ = apply_plan(before, plan)
+    entries = build_audit_entries(before, after, plan)
+
+    cfg = load_config(env={"REDACTOR_SEED_SECRET": "unit-test-secret"})
+    summary, _ = summarize_audit(before, entries, cfg=cfg, verification_report=None)
+    assert summary.seed_present is True
+    summary_json = json.dumps(asdict(summary))
+    assert "unit-test-secret" not in summary_json
+
+    cfg_no = load_config(env={})
+    summary_no, _ = summarize_audit(before, entries, cfg=cfg_no, verification_report=None)
+    assert summary_no.seed_present is False
+
+
+def test_secret_leakage_prevention(tmp_path: Path) -> None:
+    before = "John Doe\n"
+    plan = [
+        PlanEntry(
+            start=0,
+            end=8,
+            replacement="Jane Roe",
+            label=EntityLabel.PERSON,
+            entity_id=None,
+            span_id=None,
+            meta={"source": "unit-test-secret"},
+        )
+    ]
+    after, _ = apply_plan(before, plan)
+    cfg = load_config(env={"REDACTOR_SEED_SECRET": "unit-test-secret"})
+
+    with pytest.raises(ValueError, match="Refusing to write audit artifacts"):
+        write_report_bundle(
+            tmp_path,
+            text_before=before,
+            text_after=after,
+            plan=plan,
+            cfg=cfg,
+            verification_report=None,
+        )
+
+    plan[0].meta["source"] = "manual"
+    paths = write_report_bundle(
+        tmp_path,
+        text_before=before,
+        text_after=after,
+        plan=plan,
+        cfg=cfg,
+        verification_report=None,
+    )
+    audit_text = Path(paths["audit.json"]).read_text(encoding="utf-8")
+    plan_text = Path(paths["plan.json"]).read_text(encoding="utf-8")
+    assert "unit-test-secret" not in audit_text
+    assert "unit-test-secret" not in plan_text

@@ -258,6 +258,8 @@ def build_replacement_plan(
         if replacement is None:
             continue
 
+        # Never include secrets or cfg values in ``meta``; audit writer will
+        # refuse to write if secret-like values appear.
         meta: dict[str, object] = {
             "source": sp.source,
             "span_id": sp.span_id,

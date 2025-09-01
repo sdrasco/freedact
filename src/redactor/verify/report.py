@@ -24,7 +24,7 @@ from pathlib import Path
 # No external dependencies; typing helpers are minimal.
 from redactor.config import ConfigModel
 from redactor.detect.base import EntityLabel
-from redactor.pseudo.seed import doc_hash, ensure_secret_present
+from redactor.pseudo.seed import _read_secret_str, doc_hash, ensure_secret_present
 from redactor.replace.plan_builder import PlanEntry
 
 from .scanner import VerificationReport
@@ -289,6 +289,21 @@ def generate_diff_html(
 # ---------------------------------------------------------------------------
 
 
+def _ensure_no_secret_in_artifacts(payloads: list[object], cfg: ConfigModel) -> None:
+    """Raise if a secret-like value would be written to disk."""
+
+    secret = _read_secret_str(cfg)
+    if not secret:
+        return
+    blob = "\n".join(json.dumps(p, ensure_ascii=False, sort_keys=True) for p in payloads)
+    if secret in blob:
+        raise ValueError(
+            "Refusing to write audit artifacts because a secret-like value was "
+            "detected in payload. Ensure no secrets are placed into PlanEntry.meta "
+            "or attrs."
+        )
+
+
 def write_report_bundle(
     report_dir: str | Path,
     *,
@@ -308,15 +323,8 @@ def write_report_bundle(
     summary, verification_dict = summarize_audit(
         text_before, entries, cfg=cfg, verification_report=verification_report
     )
-
     bundle = AuditBundle(entries=entries, summary=summary, verification=verification_dict)
 
-    report_path = Path(report_dir)
-    report_path.mkdir(parents=True, exist_ok=True)
-
-    written: dict[str, str] = {}
-
-    audit_path = report_path / "audit.json"
     audit_data = {
         "entries": [
             {
@@ -329,14 +337,6 @@ def write_report_bundle(
     }
     if bundle.verification is not None:
         audit_data["verification"] = bundle.verification
-    with audit_path.open("w", encoding="utf-8") as f:
-        json.dump(audit_data, f, ensure_ascii=False, indent=2)
-    written["audit.json"] = str(audit_path)
-
-    diff_html = generate_diff_html(text_before, text_after, entries)
-    diff_path = report_path / "diff.html"
-    diff_path.write_text(diff_html, encoding="utf-8")
-    written["diff.html"] = str(diff_path)
 
     plan_min: list[dict[str, object | None]] = []
     for p in plan:
@@ -352,13 +352,9 @@ def write_report_bundle(
                 "entity_id": p.entity_id,
             }
         )
-    plan_path = report_path / "plan.json"
-    with plan_path.open("w", encoding="utf-8") as f:
-        json.dump(plan_min, f, ensure_ascii=False, indent=2)
-    written["plan.json"] = str(plan_path)
 
+    ver_dict: dict[str, object] | None = None
     if verification_report is not None:
-        verification_path = report_path / "verification.json"
         ver_dict = asdict(verification_report)
         for key in ("findings", "ignored"):
             items = ver_dict.get(key)
@@ -367,6 +363,42 @@ def write_report_bundle(
                     label = item.get("label")
                     if isinstance(label, EntityLabel):
                         item["label"] = label.name
+
+    diff_html = generate_diff_html(text_before, text_after, entries)
+
+    payloads: list[object] = [audit_data, plan_min]
+    if ver_dict is not None:
+        payloads.append(ver_dict)
+    _ensure_no_secret_in_artifacts(payloads, cfg)
+    secret = _read_secret_str(cfg)
+    if secret and secret in diff_html:
+        raise ValueError(
+            "Refusing to write audit artifacts because a secret-like value was "
+            "detected in payload. Ensure no secrets are placed into PlanEntry.meta "
+            "or attrs."
+        )
+
+    report_path = Path(report_dir)
+    report_path.mkdir(parents=True, exist_ok=True)
+
+    written: dict[str, str] = {}
+
+    audit_path = report_path / "audit.json"
+    with audit_path.open("w", encoding="utf-8") as f:
+        json.dump(audit_data, f, ensure_ascii=False, indent=2)
+    written["audit.json"] = str(audit_path)
+
+    diff_path = report_path / "diff.html"
+    diff_path.write_text(diff_html, encoding="utf-8")
+    written["diff.html"] = str(diff_path)
+
+    plan_path = report_path / "plan.json"
+    with plan_path.open("w", encoding="utf-8") as f:
+        json.dump(plan_min, f, ensure_ascii=False, indent=2)
+    written["plan.json"] = str(plan_path)
+
+    if ver_dict is not None:
+        verification_path = report_path / "verification.json"
         with verification_path.open("w", encoding="utf-8") as f:
             json.dump(ver_dict, f, ensure_ascii=False, indent=2)
         written["verification.json"] = str(verification_path)
