@@ -69,7 +69,92 @@ class DOBDetector:
         line_index: LineIndex = build_line_index(text)
         spans: list[EntitySpan] = []
 
-        for span in candidates:
+        by_line: dict[int, list[tuple[int, EntitySpan]]] = {}
+        for idx, span in enumerate(candidates):
+            by_line.setdefault(find_line_for_char(span.start, line_index), []).append((idx, span))
+
+        sep_rx = re.compile(r"^[\s:\-–—]{0,3}$")
+        used: set[int] = set()
+        pending: tuple[str, bool] | None = None
+
+        for line_no, (l_start, l_end, _) in enumerate(line_index):
+            entries = by_line.get(line_no, [])
+            entries.sort(key=lambda x: x[1].start)
+            date_idx = 0
+
+            if pending and entries:
+                trig, _ = pending
+                span_idx, span = entries[date_idx]
+                prefix = text[l_start : span.start]
+                if prefix.strip() == "":
+                    normalized = cast(str | None, span.attrs.get("normalized"))
+                    if normalized:
+                        components = cast(dict[str, str] | None, span.attrs.get("components"))
+                        prev_attrs: Dict[str, object] = {
+                            "normalized": normalized,
+                            "components": components,
+                            "trigger": trig,
+                            "line_scope": "prev_line",
+                        }
+                        spans.append(
+                            EntitySpan(
+                                span.start,
+                                span.end,
+                                span.text,
+                                EntityLabel.DOB,
+                                "date_dob",
+                                self._confidence_explicit,
+                                prev_attrs,
+                            )
+                        )
+                        used.add(span_idx)
+                        date_idx += 1
+                pending = None
+
+            trigger_matches: list[tuple[int, int, str]] = []
+            line_text = text[l_start:l_end]
+            for pattern, name in _DOB_PATTERNS:
+                for m in pattern.finditer(line_text):
+                    trigger_matches.append((l_start + m.start(), l_start + m.end(), name))
+            trigger_matches.sort()
+
+            for _t_start, t_end, name in trigger_matches:
+                while date_idx < len(entries) and entries[date_idx][1].start < t_end:
+                    date_idx += 1
+                if date_idx >= len(entries):
+                    pending = (name, True)
+                    break
+                span_idx, span = entries[date_idx]
+                between = text[t_end : span.start]
+                if "." in between or not sep_rx.fullmatch(between):
+                    continue
+                normalized = cast(str | None, span.attrs.get("normalized"))
+                if not normalized:
+                    continue
+                components = cast(dict[str, str] | None, span.attrs.get("components"))
+                attrs: Dict[str, object] = {
+                    "normalized": normalized,
+                    "components": components,
+                    "trigger": name,
+                    "line_scope": "same_line",
+                }
+                spans.append(
+                    EntitySpan(
+                        span.start,
+                        span.end,
+                        span.text,
+                        EntityLabel.DOB,
+                        "date_dob",
+                        self._confidence_explicit,
+                        attrs,
+                    )
+                )
+                used.add(span_idx)
+                date_idx += 1
+
+        for idx, span in enumerate(candidates):
+            if idx in used:
+                continue
             normalized = cast(str | None, span.attrs.get("normalized"))
             if not normalized:
                 continue
@@ -78,39 +163,23 @@ class DOBDetector:
             line_start, _, _ = line_index[line_no]
             window_start = max(line_start, span.start - _WINDOW_CHARS)
             left_context = text[window_start : span.start]
-            trigger: str | None = None
-            line_scope = "same_line"
-
-            for pattern, name in _DOB_PATTERNS:
-                if pattern.search(left_context):
-                    trigger = name
-                    break
-
-            if not trigger and _BORN_PATTERN.search(left_context):
+            trigger = None
+            scope = "same_line"
+            if _BORN_PATTERN.search(left_context):
                 trigger = "born"
-
-            if not trigger and line_no > 0:
+            elif line_no > 0:
                 prev_start, prev_end, _ = line_index[line_no - 1]
                 prev_text = text[prev_start:prev_end]
-                for pattern, name in _DOB_PATTERNS:
-                    if pattern.search(prev_text):
-                        trigger = name
-                        line_scope = "prev_line"
-                        break
-                if not trigger and _BORN_PATTERN.search(prev_text):
+                if _BORN_PATTERN.search(prev_text):
                     trigger = "born"
-                    line_scope = "prev_line"
-
+                    scope = "prev_line"
             if not trigger:
                 continue
-
-            confidence = self._confidence_explicit if trigger != "born" else self._confidence_born
-
-            attrs: Dict[str, object] = {
+            attrs = {
                 "normalized": normalized,
                 "components": components,
                 "trigger": trigger,
-                "line_scope": line_scope,
+                "line_scope": scope,
             }
             spans.append(
                 EntitySpan(
@@ -119,7 +188,7 @@ class DOBDetector:
                     span.text,
                     EntityLabel.DOB,
                     "date_dob",
-                    confidence,
+                    self._confidence_born,
                     attrs,
                 )
             )

@@ -75,8 +75,8 @@ RX_ROLE_ALIAS: re.Pattern[str] = re.compile(rf"^(?:{'|'.join(sorted(ROLE_LABELS)
 
 RX_HEREINAFTER_WITH_SUBJ: re.Pattern[str] = re.compile(
     rf"""
-    (?P<subject>{NAME_PHRASE})\s*,?\s*
-    (?P<trigger>hereinafter|hereafter)\s+
+    (?P<subject>{NAME_PHRASE})\s*(?:,|\()?
+    \s*(?P<trigger>hereinafter|hereafter)\s+
     (?:referred\s+to\s+as\s+)?
     (?P<q1>[{QUOTE_CLASS}])(?P<alias>[^{QUOTE_CLASS}]+?)(?P<q2>[{QUOTE_CLASS}])
     """,
@@ -123,7 +123,7 @@ def _is_title_token(token: str) -> bool:
 
 
 def _looks_like_subject(text: str) -> bool:
-    if re.search(r"\b(LLC|Inc\.?|Ltd\.?|N\.A\.)\b", text):
+    if re.search(r"\b(LLC|Inc\.?|Ltd\.?|N\.A\.|Company|Bank|Trust)\b", text):
         return True
     words = text.split()
     for i in range(len(words) - 1):

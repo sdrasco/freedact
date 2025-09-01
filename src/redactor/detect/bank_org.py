@@ -22,7 +22,8 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from ..utils.constants import rtrim_index
+# Right-side trimming is handled by ``_trim_span`` which preserves
+# certain corporate suffixes ending in a period.
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["BankOrgDetector", "get_detector"]
@@ -97,6 +98,21 @@ _KIND_ORDER = {
 
 _HIGH_CONF_SUFFIXES = {"na", "national_association", "plc", "nv"}
 
+_TRIM_SUFFIXES = {
+    "n.a",
+    "n.v",
+    "inc",
+    "corp",
+    "co",
+    "ltd",
+    "llc",
+    "plc",
+    "llp",
+    "company",
+    "credit union",
+    "trust company",
+}
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -169,6 +185,40 @@ def _after_bank_contains(full_text: str, bank_end: int) -> bool:
     return False
 
 
+def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
+    """Return ``start``/``end`` adjusted for wrapping punctuation.
+
+    The function preserves trailing periods that are part of a recognised
+    corporate suffix (e.g. ``N.A.`` or ``Inc.``) while still stripping outer
+    prose punctuation such as closing parentheses or commas.
+    """
+
+    # Drop a leading "(" if present.
+    if start < end and text[start] == "(":
+        start += 1
+        if end > start and text[end - 1] == ")":
+            end -= 1
+
+    # Include a trailing period if it belongs to a known suffix.
+    span_text = text[start:end]
+    tokens = span_text.split()
+    candidate = ""
+    if len(tokens) >= 2:
+        last_two = f"{tokens[-2].rstrip('.,;:')} {tokens[-1].rstrip('.,;:')}".lower()
+        if last_two in _TRIM_SUFFIXES:
+            candidate = last_two
+    if not candidate and tokens:
+        candidate = tokens[-1].rstrip(".,;:").lower()
+    if candidate in _TRIM_SUFFIXES and end < len(text) and text[end] == ".":
+        end += 1
+
+    # Remove a single trailing right parenthesis if present after the entity.
+    if end < len(text) and text[end] == ")":
+        pass  # simply do not include it
+
+    return start, end
+
+
 # ---------------------------------------------------------------------------
 # Detector implementation
 # ---------------------------------------------------------------------------
@@ -187,8 +237,7 @@ class BankOrgDetector:
 
         def handle_matches(matches: Iterable[re.Match[str]], kind: str, hint: str) -> None:
             for m in matches:
-                start, end = m.span()
-                end = rtrim_index(text, end)
+                start, end = _trim_span(text, *m.span())
                 span_text = text[start:end]
                 suffix_raw = m.groupdict().get("suffix")
 
