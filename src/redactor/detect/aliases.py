@@ -123,7 +123,7 @@ def _is_title_token(token: str) -> bool:
 
 
 def _looks_like_subject(text: str) -> bool:
-    if re.search(r"\b(LLC|Inc\.?|Ltd\.?|N\.A\.)\b", text):
+    if re.search(r"\b(LLC|Inc\.?|Ltd\.?|N\.A\.|Bank|Trust|Company)\b", text):
         return True
     words = text.split()
     for i in range(len(words) - 1):
@@ -139,17 +139,14 @@ def _guess_subject(
         line_no = find_line_for_char(start, line_index)
     except ValueError:
         return None, None
-    looked = 0
     prev = line_no - 1
-    while prev >= 0 and looked < 2:
+    while prev >= 0:
         l_start, l_end, _ = line_index[prev]
         candidate = text[l_start:l_end].strip()
-        if candidate:
-            looked += 1
-            if _looks_like_subject(candidate):
-                # TODO(M7-T2): prefer name-like candidates using
-                # ``is_probable_person_name`` from ``names_person``.
-                return candidate, prev
+        if candidate and _looks_like_subject(candidate):
+            # TODO(M7-T2): prefer name-like candidates using
+            # ``is_probable_person_name`` from ``names_person``.
+            return candidate, prev
         prev -= 1
     return None, None
 

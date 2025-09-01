@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from ..utils.constants import rtrim_index
+from ..utils.constants import RIGHT_TRIM
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["BankOrgDetector", "get_detector"]
@@ -189,19 +189,24 @@ class BankOrgDetector:
             for m in matches:
                 start, end = m.span()
                 suffix_raw = m.groupdict().get("suffix")
-                has_suffix_dot = bool(
-                    suffix_raw
-                    and (
-                        suffix_raw.rstrip().endswith(".") or (end < len(text) and text[end] == ".")
-                    )
-                )
-                if has_suffix_dot and end < len(text) and text[end] == ".":
-                    end += 1
-                protected_end = end if has_suffix_dot else None
-                end = rtrim_index(text, end)
-                if protected_end is not None and end < protected_end:
-                    end = protected_end
+                has_suffix_dot = False
+                if suffix_raw and (
+                    suffix_raw.rstrip().endswith(".") or (end < len(text) and text[end] == ".")
+                ):
+                    if end < len(text) and text[end] == ".":
+                        end += 1
+                    has_suffix_dot = True
                 span_text = text[start:end]
+
+                if span_text.startswith("(") and span_text.endswith(")"):
+                    start += 1
+                    end -= 1
+                    span_text = text[start:end]
+
+                if span_text and span_text[-1] in RIGHT_TRIM:
+                    if not (has_suffix_dot and span_text[-1] == "."):
+                        end -= 1
+                        span_text = text[start:end]
 
                 # Exclusion heuristics for patterns containing the word "Bank".
                 if "Bank" in span_text:

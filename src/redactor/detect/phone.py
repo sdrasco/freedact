@@ -42,7 +42,7 @@ from phonenumbers import (
     region_code_for_number,
 )
 
-from ..utils.constants import rtrim_index
+from ..utils.constants import RIGHT_TRIM
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["PhoneDetector", "get_detector"]
@@ -139,7 +139,8 @@ class PhoneDetector:
             if not is_valid_number(num):
                 continue
 
-            end = rtrim_index(text, end)
+            if end > start and text[end - 1] in RIGHT_TRIM:
+                end -= 1
             matched_text = text[start:end]
 
             attrs: dict[str, object] = {

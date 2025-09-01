@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
+import types
 from pathlib import Path
 from time import perf_counter
 from types import TracebackType
@@ -26,6 +27,11 @@ from typing import Optional
 
 import typer
 from pydantic import ValidationError
+
+try:  # pragma: no cover - optional rich dependency
+    import rich as _rich
+except Exception:  # pragma: no cover - missing rich
+    _rich = None  # type: ignore[assignment]
 
 from .config import ConfigModel, load_config
 from .detect.base import DetectionContext, Detector, EntitySpan
@@ -40,13 +46,33 @@ from .utils.textspan import build_line_starts
 from .verify import report as verify_report
 from .verify import scanner
 
+rich: types.ModuleType | None = _rich
+
 if not sys.stdout.isatty():  # pragma: no cover - CLI test context
     os.environ.setdefault("NO_COLOR", "1")
     os.environ.setdefault("RICH_DISABLE_NO_COLOR", "1")
+    os.environ.setdefault("CLICOLOR", "0")
+    os.environ.setdefault("TERM", "dumb")
+
+if rich is not None:
+    try:  # pragma: no cover - defensive
+        if "rich.markup" not in sys.modules:
+            markup = types.ModuleType("markup")
+            markup.render = lambda text, *_a, **_k: text  # type: ignore[attr-defined]
+            markup.escape = lambda text: text  # type: ignore[attr-defined]
+            sys.modules["rich.markup"] = markup
+            rich.markup = markup  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - defensive
+        pass
 
 app = typer.Typer(
     name="redactor",
-    help="Utilities for the redaction pipeline. Use 'redactor run' to execute the pipeline.",
+    help=(
+        "Utilities for the redaction pipeline. Use 'redactor run --in <path> --out "
+        "<path>' to execute the pipeline."
+    ),
+    pretty_exceptions_enable=False,
+    rich_markup_mode=None,
 )
 
 
@@ -154,7 +180,9 @@ def run(  # noqa: PLR0913
     in_path: Path = typer.Option(  # noqa: B008
         ..., "--in", "--input", help="Input file (.txt only for now)"
     ),
-    out_path: Path = typer.Option(..., "--out", help="Output file (.txt)"),  # noqa: B008
+    out_path: Path = typer.Option(  # noqa: B008
+        ..., "--out", "--output", help="Output file (.txt)"
+    ),
     config_path: Optional[Path] = typer.Option(  # noqa: B008
         None, "--config", help="YAML config to override defaults"
     ),
