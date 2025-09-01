@@ -90,6 +90,13 @@ Use `--require-secret` in CI/automation to fail fast if the secret is missing.
 The secret is never written to audit artifacts; only a `seed_present` boolean
 is recorded.
 
+## Audit artifact safety
+
+The seed is never written to disk; `audit.json` only records a `seed_present`
+flag indicating whether a secret was configured. The report writer also refuses
+to write if a secret-like value would appear in the payloads (for example, if a
+`PlanEntry.meta` accidentally includes configuration or secrets).
+
 ## Pseudonym generator (stub)
 
 The current pseudonym generator maps each entity to a deterministic placeholder

@@ -22,7 +22,13 @@ SAMPLE_TEXT = (
 )
 
 
-def _run_cli(tmp_path: Path, text: str, extra: list[str] | None = None) -> tuple[int, Path, Path]:
+def _run_cli(
+    tmp_path: Path,
+    text: str,
+    extra: list[str] | None = None,
+    *,
+    env: dict[str, str] | None = None,
+) -> tuple[int, Path, Path]:
     in_txt = tmp_path / "in.txt"
     in_txt.write_text(text, encoding="utf-8")
     out_txt = tmp_path / "out.txt"
@@ -40,7 +46,7 @@ def _run_cli(tmp_path: Path, text: str, extra: list[str] | None = None) -> tuple
     if extra:
         cmd.extend(extra)
     runner = CliRunner()
-    result = runner.invoke(app, cmd)
+    result = runner.invoke(app, cmd, env=env)
     return result.exit_code, out_txt, report_dir
 
 
@@ -64,6 +70,34 @@ def test_basic_success(tmp_path: Path) -> None:
         "PHONE",
         "ACCOUNT_ID",
     } <= labels
+
+
+def test_seed_present_in_audit(tmp_path: Path) -> None:
+    in_txt = tmp_path / "in.txt"
+    in_txt.write_text("Email: john@acme.com\n", encoding="utf-8")
+    out_txt = tmp_path / "out.txt"
+    report_dir = tmp_path / "report"
+    cmd = [
+        "run",
+        "--in",
+        str(in_txt),
+        "--out",
+        str(out_txt),
+        "--report",
+        str(report_dir),
+        "--no-strict",
+    ]
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        cmd,
+        env={"REDACTOR_SEED_SECRET": "unit-test-secret", "PYTHONPATH": "src:."},
+    )
+    assert result.exit_code == 0
+    audit_text = (report_dir / "audit.json").read_text(encoding="utf-8")
+    audit = json.loads(audit_text)
+    assert audit["summary"]["seed_present"]
+    assert "unit-test-secret" not in audit_text
 
 
 def test_alias_policy_keep_roles(tmp_path: Path) -> None:
