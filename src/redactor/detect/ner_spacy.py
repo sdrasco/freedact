@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 
+from ..utils.constants import rtrim_index
 from redactor.config import ConfigModel
 
 from .base import DetectionContext, EntityLabel, EntitySpan
@@ -56,15 +57,11 @@ ROLE_LEXICON = {
     "Recipient",
 }
 
-TRAILING_PUNCTUATION = ")]}\};:,.!?»”’>"
-
 
 def _trim_right_punct(text: str, start: int, end: int) -> tuple[int, int]:
     """Trim trailing punctuation from ``text[start:end]``."""
 
-    while end > start and text[end - 1] in TRAILING_PUNCTUATION:
-        end -= 1
-    return start, end
+    return start, rtrim_index(text, end)
 
 
 # Regex patterns for pure Python fallback.
