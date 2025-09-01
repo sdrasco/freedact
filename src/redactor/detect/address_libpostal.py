@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Iterable, Sequence
 
-import usaddress
+try:
+    import usaddress
+except Exception:  # pragma: no cover - optional dependency
+    usaddress = None
 
 from .base import DetectionContext, EntityLabel, EntitySpan
 
@@ -50,6 +53,8 @@ RX_ZIP: re.Pattern[str] = re.compile(r"\b\d{5}(?:-\d{4})?\b")
 
 @lru_cache(maxsize=2048)
 def _parse_usaddr(core: str) -> list[tuple[str, str]]:
+    if usaddress is None:  # pragma: no cover - optional dependency missing
+        raise RuntimeError("usaddress library not available")
     return list(usaddress.parse(core))
 
 
@@ -197,9 +202,11 @@ class AddressLineDetector:
     # Helpers
     # ------------------------------------------------------------------
     def _parse_core(self, core_text: str) -> _ParsedLine | None:
+        if usaddress is None:
+            return None
         try:
             tokens = _parse_usaddr(core_text)
-        except usaddress.RepeatedLabelError:
+        except Exception:
             return None
         if not tokens:
             return None

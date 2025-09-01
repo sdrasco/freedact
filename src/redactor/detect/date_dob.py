@@ -34,15 +34,32 @@ __all__ = ["DOBDetector", "get_detector"]
 # Trigger patterns
 # ---------------------------------------------------------------------------
 
+_SEP_CLASS = ":-–—"
 _DOB_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bD(?:\.\s*O\.\s*B|OB)\b", re.IGNORECASE), "dob"),
-    (re.compile(r"\bdate\s+of\s+birth\b", re.IGNORECASE), "date_of_birth"),
-    (re.compile(r"\bbirth\s*date\b|\bbirthdate\b", re.IGNORECASE), "birthdate"),
+    (
+        re.compile(
+            rf"\bD(?:\.\s*O\.\s*B|OB)\.?\b(?:\s{{0,2}}[{_SEP_CLASS}]\s{{0,2}})?$",
+            re.IGNORECASE,
+        ),
+        "dob",
+    ),
+    (
+        re.compile(
+            rf"\bdate\s+of\s+birth\b(?:\s{{0,2}}[{_SEP_CLASS}]\s{{0,2}})?$",
+            re.IGNORECASE,
+        ),
+        "date_of_birth",
+    ),
+    (
+        re.compile(
+            rf"(?:\bbirth\s*date\b|\bbirthdate\b)(?:\s{{0,2}}[{_SEP_CLASS}]\s{{0,2}})?$",
+            re.IGNORECASE,
+        ),
+        "birthdate",
+    ),
 ]
 
 _BORN_PATTERN = re.compile(r"\bborn\b", re.IGNORECASE)
-
-_WINDOW_CHARS = 40
 
 # ---------------------------------------------------------------------------
 # Detector implementation
@@ -76,28 +93,30 @@ class DOBDetector:
             components = cast(dict[str, str] | None, span.attrs.get("components"))
             line_no = find_line_for_char(span.start, line_index)
             line_start, _, _ = line_index[line_no]
-            window_start = max(line_start, span.start - _WINDOW_CHARS)
-            left_context = text[window_start : span.start]
+            line_text = text[line_start : span.start]
+            last_period = line_text.rfind(".")
+            segment = line_text[last_period + 1 :] if last_period != -1 else line_text
+            segment = segment.rstrip()
             trigger: str | None = None
             line_scope = "same_line"
 
             for pattern, name in _DOB_PATTERNS:
-                if pattern.search(left_context):
+                if pattern.search(segment):
                     trigger = name
                     break
 
-            if not trigger and _BORN_PATTERN.search(left_context):
+            if not trigger and _BORN_PATTERN.search(segment):
                 trigger = "born"
 
             if not trigger and line_no > 0:
                 prev_start, prev_end, _ = line_index[line_no - 1]
-                prev_text = text[prev_start:prev_end]
+                prev_segment = text[prev_start:prev_end].rstrip()
                 for pattern, name in _DOB_PATTERNS:
-                    if pattern.search(prev_text):
+                    if pattern.search(prev_segment):
                         trigger = name
                         line_scope = "prev_line"
                         break
-                if not trigger and _BORN_PATTERN.search(prev_text):
+                if not trigger and _BORN_PATTERN.search(prev_segment):
                     trigger = "born"
                     line_scope = "prev_line"
 

@@ -80,14 +80,26 @@ else:
     _LENIENCY = int(Leniency.VALID)
     _CONFIDENCE = 0.98
 
+_TYPE_MAP = {
+    PhoneNumberType.FIXED_LINE: "fixed_line",
+    PhoneNumberType.MOBILE: "mobile",
+    PhoneNumberType.FIXED_LINE_OR_MOBILE: "fixed_line_or_mobile",
+    PhoneNumberType.TOLL_FREE: "toll_free",
+    PhoneNumberType.PREMIUM_RATE: "premium_rate",
+    PhoneNumberType.SHARED_COST: "shared_cost",
+    PhoneNumberType.VOIP: "voip",
+    PhoneNumberType.PERSONAL_NUMBER: "personal_number",
+    PhoneNumberType.PAGER: "pager",
+    PhoneNumberType.UAN: "uan",
+    PhoneNumberType.UNKNOWN: "unknown",
+}
+
 
 def _phone_type_name(num: PhoneNumber) -> str:
     """Return the lower‑case name of the phone number type."""
 
     t = number_type(num)
-    name_map = getattr(PhoneNumberType, "_VALUES_TO_NAMES", {})
-    name = name_map.get(t, "unknown")
-    return str(name).lower()
+    return _TYPE_MAP.get(t, "unknown")
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +119,7 @@ class PhoneDetector:
     def detect(self, text: str, context: DetectionContext | None = None) -> list[EntitySpan]:
         """Detect phone numbers in ``text``."""
 
-        region = normalize_region(context.locale if context else None)
+        region = normalize_region(context.locale if context else "US") or "US"
         matcher = PhoneNumberMatcher(text, region, leniency=self._leniency)
 
         spans: list[EntitySpan] = []

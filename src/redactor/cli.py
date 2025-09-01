@@ -17,6 +17,8 @@ Exit codes
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from time import perf_counter
 from types import TracebackType
@@ -37,6 +39,10 @@ from .utils.errors import UnsupportedFormatError
 from .utils.textspan import build_line_starts
 from .verify import report as verify_report
 from .verify import scanner
+
+if not sys.stdout.isatty():  # pragma: no cover - CLI test context
+    os.environ.setdefault("NO_COLOR", "1")
+    os.environ.setdefault("RICH_DISABLE_NO_COLOR", "1")
 
 app = typer.Typer(
     name="redactor",
@@ -145,7 +151,9 @@ def main() -> None:
 
 @app.command()
 def run(  # noqa: PLR0913
-    in_path: Path = typer.Option(..., "--in", help="Input file (.txt only for now)"),  # noqa: B008
+    in_path: Path = typer.Option(  # noqa: B008
+        ..., "--in", "--input", help="Input file (.txt only for now)"
+    ),
     out_path: Path = typer.Option(..., "--out", help="Output file (.txt)"),  # noqa: B008
     config_path: Optional[Path] = typer.Option(  # noqa: B008
         None, "--config", help="YAML config to override defaults"

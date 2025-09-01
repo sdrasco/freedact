@@ -75,7 +75,7 @@ RX_ROLE_ALIAS: re.Pattern[str] = re.compile(rf"^(?:{'|'.join(sorted(ROLE_LABELS)
 
 RX_HEREINAFTER_WITH_SUBJ: re.Pattern[str] = re.compile(
     rf"""
-    (?P<subject>{NAME_PHRASE})\s*,?\s*
+    (?P<subject>{NAME_PHRASE})[ \t]*,?[ \t]*\(?[ \t]*
     (?P<trigger>hereinafter|hereafter)\s+
     (?:referred\s+to\s+as\s+)?
     (?P<q1>[{QUOTE_CLASS}])(?P<alias>[^{QUOTE_CLASS}]+?)(?P<q2>[{QUOTE_CLASS}])
@@ -266,12 +266,13 @@ class AliasDetector:
                     if mi.subject_span
                     else None
                 ),
-                "subject_guess": mi.subject_guess,
-                "subject_guess_line": mi.subject_guess_line,
                 "scope_hint": mi.scope_hint,
                 "confidence": mi.confidence,
                 "role_flag": role_flag,
             }
+            if mi.subject_guess is not None:
+                attrs["subject_guess"] = mi.subject_guess
+                attrs["subject_guess_line"] = mi.subject_guess_line
 
             spans.append(
                 EntitySpan(
