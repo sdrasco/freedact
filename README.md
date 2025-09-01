@@ -2,7 +2,7 @@
   <img src="banner.png" alt="Freedact Project Banner" />
 </p>
 
-Freedact automatically replaces private details in documents with consistent, realistic pseudonyms. It runs entirely on your own machine, so the redaction itself never uses the cloud or introduces new risks. The result is a version you can safely share with AI tools or other online services without exposing the original sensitive information.
+Freedact automatically replaces private details in text with consistent, realistic pseudonyms. It runs entirely on your own machine, so the redaction itself never uses the cloud or introduces new risks. The result is a version you can safely share with AI tools or other online services without exposing the original sensitive information.
 
 ## Table of Contents
 
