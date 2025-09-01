@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Iterable, Sequence
 
 import usaddress
@@ -37,6 +38,33 @@ PREFIX_LABEL_RE = re.compile(
     r"^(?:address|mailing address|registered office|residence|location|addr)\s*[:\u2013-]?\s*",
     re.IGNORECASE,
 )
+
+# Prefilter regexes compiled at import time
+RX_POBOX: re.Pattern[str] = re.compile(r"^\s*(P.?\sO.?\sBox)\b", re.IGNORECASE)
+RX_UNIT: re.Pattern[str] = re.compile(
+    r"\b(Suite|Ste.?|Apt.?|Apartment|Unit|#|Floor|Fl.?|Rm.?|Room)\b", re.IGNORECASE
+)
+RX_CITY_STATE: re.Pattern[str] = re.compile(r",\s*[A-Z]{2}\b")
+RX_ZIP: re.Pattern[str] = re.compile(r"\b\d{5}(?:-\d{4})?\b")
+
+
+@lru_cache(maxsize=2048)
+def _parse_usaddr(core: str) -> list[tuple[str, str]]:
+    return list(usaddress.parse(core))
+
+
+def _should_parse_line(core: str) -> bool:
+    if any(ch.isdigit() for ch in core):
+        return True
+    if RX_POBOX.search(core):
+        return True
+    if RX_UNIT.search(core):
+        return True
+    if RX_CITY_STATE.search(core):
+        return True
+    if RX_ZIP.search(core):
+        return True
+    return False
 
 
 @dataclass(slots=True)
@@ -118,6 +146,8 @@ class AddressLineDetector:
                 core_text = text[start_core:end_core]
                 if not core_text:
                     continue
+            if not _should_parse_line(core_text):
+                continue
 
             parsed = self._parse_core(core_text)
             if parsed is None:
@@ -168,17 +198,18 @@ class AddressLineDetector:
     # ------------------------------------------------------------------
     def _parse_core(self, core_text: str) -> _ParsedLine | None:
         try:
-            tokens = list(usaddress.parse(core_text))
+            tokens = _parse_usaddr(core_text)
         except usaddress.RepeatedLabelError:
             return None
         if not tokens:
             return None
         components: dict[str, str] = {}
         for token, label in tokens:
+            clean = token.replace(".", "").rstrip(",")
             if label in components:
-                components[label] += f" {token}"
+                components[label] += f" {clean}"
             else:
-                components[label] = token
+                components[label] = clean
         labels = {label for _, label in tokens}
         return _ParsedLine(tokens, components, labels)
 

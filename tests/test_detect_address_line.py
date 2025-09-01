@@ -111,3 +111,23 @@ def test_multiple_lines_order(det: AddressLineDetector) -> None:
 )
 def test_negatives(det: AddressLineDetector, text: str) -> None:
     assert det.detect(text) == []
+
+
+def test_unit_keyword_without_digits(det: AddressLineDetector) -> None:
+    text = "Suite A"
+    span = det.detect(text)[0]
+    assert cast(str, span.attrs["line_kind"]) == "unit"
+    comps = cast(dict[str, str], span.attrs["components"])
+    assert comps.get("OccupancyType") == "Suite"
+    assert comps.get("OccupancyIdentifier") == "A"
+
+
+def test_po_box_prefilter(det: AddressLineDetector) -> None:
+    text = "PO Box 123"
+    span = det.detect(text)[0]
+    assert cast(str, span.attrs["line_kind"]) == "po_box"
+
+
+@pytest.mark.parametrize("text", ["Bank of Example, N.A.", "Main Street"])
+def test_prefilter_non_addresses(det: AddressLineDetector, text: str) -> None:
+    assert det.detect(text) == []
