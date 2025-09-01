@@ -2,6 +2,22 @@
 
 The redactor project aims to provide a privacy-first pipeline for sanitizing legal documents before they are shared with cloud-based language models. It replaces sensitive personal and organizational information with deterministic pseudonyms while preserving the technical facts necessary for analysis. The system operates entirely offline by default and relies on open-source tools for detection and replacement of PII. Each modification is auditable so users can trace the origin and rationale for every change. The goal is to ensure zero leakage of personal data, reproducible outputs, and seamless integration into legal workflows. This repository currently contains only the foundational scaffolding; product functionality will be added in future iterations.
 
+## Install extras
+
+Optional extras let you pull in only the dependencies you need:
+
+```bash
+pip install -e .[dev]
+pip install -e .[ner]
+pip install -e .[addresses]
+pip install -e .[coref]
+pip install -e .[all]
+```
+
+NER and coreference resolution are disabled by default and require installing
+their respective extras. The base install already includes phone number and
+account detectors.
+
 ## Architecture at a glance
 
 ### Top-level modules
