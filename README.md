@@ -2,8 +2,6 @@
   <img src="banner.png" alt="Project banner — replace docs/banner.png with your image" width="100%" />
 </p>
 
-# Freedact
-
 Privacy‑first redaction for legal documents, built for safe LLM use. It detects sensitive entities, generates deterministic shape‑preserving pseudonyms, applies replacements safely, verifies there’s no residual PII, and produces auditable artifacts — all locally by default.
 
 ---
