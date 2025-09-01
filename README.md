@@ -1,265 +1,191 @@
-# redactor
+<p align="center">
+  <img src="banner.png" alt="Project banner — replace docs/banner.png with your image" width="100%" />
+</p>
 
-The redactor project aims to provide a privacy-first pipeline for sanitizing legal documents before they are shared with cloud-based language models. It replaces sensitive personal and organizational information with deterministic pseudonyms while preserving the technical facts necessary for analysis. The system operates entirely offline by default and relies on open-source tools for detection and replacement of PII. Each modification is auditable so users can trace the origin and rationale for every change. The goal is to ensure zero leakage of personal data, reproducible outputs, and seamless integration into legal workflows. This repository currently contains only the foundational scaffolding; product functionality will be added in future iterations.
+# Redactor
 
-## Install extras
+Privacy‑first redaction for legal documents, built for safe LLM use. It detects sensitive entities, generates deterministic shape‑preserving pseudonyms, applies replacements safely, verifies there’s no residual PII, and produces auditable artifacts — all locally by default.
 
-Optional extras let you pull in only the dependencies you need:
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Install](#install)
+  - [Extras](#extras)
+- [Quick Start (CLI)](#quick-start-cli)
+- [Configuration & Secrets](#configuration--secrets)
+- [Architecture](#architecture)
+  - [Pipeline, End to End](#pipeline-end-to-end)
+- [Pseudonymization](#pseudonymization)
+  - [Names, Orgs & Banks](#names-orgs--banks)
+  - [Addresses](#addresses)
+  - [Dates vs DOB](#dates-vs-dob)
+  - [Aliases & Consistency](#aliases--consistency)
+  - [Replacement Planning & Safety](#replacement-planning--safety)
+- [Verification & Leakage Scoring](#verification--leakage-scoring)
+- [Audit & Diff Artifacts](#audit--diff-artifacts)
+- [Fixtures](#fixtures)
+- [Metrics](#metrics)
+- [Performance (profiling)](#performance-profiling)
+- [Fuzz Testing](#fuzz-testing)
+- [Contributing](#contributing)
+
+---
+
+## Features
+
+- **Detectors** for emails, phones, bank/org names, addresses (line + merged blocks), account/ID numbers (CC, ABA routing, IBAN, SSN/EIN, BIC), DOB vs generic dates, legal alias terms, and optional NER (spaCy).
+- **Linking & coref** to keep mentions of the same person/party consistent (optional fastcoref with regex fallback).
+- **Shape‑preserving pseudonyms** for people/organizations, banks, addresses, and numeric IDs (Luhn/ABA‑valid where appropriate).
+- **Replacement planner & applier** (reverse, chunked) with strong validation and idempotence.
+- **Safety guards** ensure generated emails use `example.org`, phones use safe `555` patterns, and IDs don’t collide with sensitive real values.
+- **Verification scanner** to re‑detect residual PII and compute a leakage score.
+- **Audit bundle** (`audit.json`, `diff.html`, `plan.json`, `verification.json`) with secret‑safety checks.
+- **Fixtures, metrics, fuzz & perf** harnesses to keep quality high in CI.
+- **CLI** with strict mode and rich but test‑friendly help output.
+
+---
+
+## Install
+
+The base install provides the core pipeline and common detectors:
 
 ```bash
-pip install -e .[dev]
-pip install -e .[ner]
-pip install -e .[addresses]
-pip install -e .[coref]
-pip install -e .[all]
+pip install -e .
 ```
 
-NER and coreference resolution are disabled by default and require installing
-their respective extras. The base install already includes phone number and
-account detectors.
+### Extras
 
-## Architecture at a glance
+Install only what you need, or everything:
 
-### Top-level modules
-- `config`: configuration loading and validation
-- `io`: file readers and writers
-- `preprocess`: text normalization and segmentation
-- `detect`: entity detectors
-- `link`: span linking and coreference resolution
-- `pseudo`: pseudonym generation rules
-- `replace`: building and applying replacements
-- `verify`: post-redaction checks
-- `evaluation`: metrics and test fixtures
-- `utils`: shared helper utilities
-
-### Pipeline stages
-1. **Preprocess** input text
-2. **Detect** sensitive entities
-3. **Link** and resolve entity references
-4. **Generate pseudonyms** for entities
-5. **Plan & apply replacements**
-6. **Verify** redacted output
-7. **Evaluate** performance (optional)
-
-Modules are intentionally empty pending M1-T3 and later tasks.
-
-## Preprocessing
-
-Normalization cleans up a few Unicode quirks while preserving line breaks and
-most spacing.  It also returns a ``char_map`` so that every character in the
-normalized text can be traced back to its original index.  Sentence segmentation
-is intentionally conservative and aims only to provide reasonable hints for
-later detectors.
-
-## Configuration
-
-The library loads default settings from `redactor/config/defaults.yml`. You can
-override these by supplying your own YAML file:
-
-```yaml
-# myconfig.yml
-pseudonyms:
-  cross_doc_consistency: true
+```bash
+pip install -e .[dev]         # linters, mypy, pytest, coverage
+pip install -e .[addresses]   # usaddress for address line parsing
+pip install -e .[ner]         # spaCy for NER (optional)
+pip install -e .[coref]       # fastcoref + torch (optional)
+pip install -e .[all]         # all optional features
 ```
 
-Load overrides with `load_config("myconfig.yml")`. Secrets such as the
-pseudonym seed are provided via environment variables; set
-`REDACTOR_SEED_SECRET` (or a custom variable defined by
-`pseudonyms.seed.secret_env`) to deterministically seed pseudonyms.
+NER and coreference are optional and disabled by default. The base install already includes phone and account detectors.
 
-## Deterministic seeding
+---
 
-Seeding controls how identifiers and random number generators are derived from
-input text. By default, identifiers are scoped to each document, so the same
-person in two files receives different pseudonyms. Setting
-`pseudonyms.cross_doc_consistency` to `true` switches to global scoping where
-the same entity maps to the same pseudonym across documents.
+## Quick Start (CLI)
 
-Provide a secret via the `REDACTOR_SEED_SECRET` environment variable (or the
-name configured in `pseudonyms.seed.secret_env`) to cryptographically tie these
-values to your deployment. Omitting the secret still yields deterministic
-output but without cryptographic protection.
-
-## Seed secret (deterministic pseudonyms)
-
-For reproducible pseudonyms across runs, set `REDACTOR_SEED_SECRET` or
-configure `pseudonyms.seed.secret`.
-
-Use `--require-secret` in CI/automation to fail fast if the secret is missing.
-
-The secret is never written to audit artifacts; only a `seed_present` boolean
-is recorded.
-
-## Audit artifact safety
-
-The seed is never written to disk; `audit.json` only records a `seed_present`
-flag indicating whether a secret was configured. The report writer also refuses
-to write if a secret-like value would appear in the payloads (for example, if a
-`PlanEntry.meta` accidentally includes configuration or secrets).
-
-## Pseudonym generator (stub)
-
-The current pseudonym generator maps each entity to a deterministic placeholder
-such as `PERSON_xxxxx` or `ORG_xxxxx`. These tokens are stable for a given
-configuration and scope but are clearly fake. Future milestones will introduce
-shape-preserving fakes and integrate them with case/format preservation.
-
-## Pseudonym rules (shape-preserving)
-
-This milestone adds a library of lightweight generators that craft realistic
-looking replacements while keeping the visible shape of the source text.
-Examples:
-
-* Names – `JOHN DOE` → `ALAN SMITH`, `J.D.` → `A.C.`
-* Organizations – `Acme LLC` → `Apex Vector LLC`
-* Banks – `Chase Bank, N.A.` → `Summit Bank, N.A.`
-* Addresses – ``1600 Pennsylvania Ave NW`` → ``2458 Oak St NW``
-* Numbers – credit cards, routing numbers and IDs retain their punctuation and
-  pass simple checksum rules.
-
-Determinism is still guaranteed via the seeding utilities.  Downstream
-verification can choose to treat these fakes as allowable data or filter them
-from leakage scoring using the audit map.
-
-## Case and format preservation
-
-Pseudonym replacements mirror the casing and punctuation shape of the source
-text.  Generated names adapt to match initials patterns and interior
-punctuation, keeping the redacted output natural.  For example, a source token
-like ``O’NEIL`` would become ``D’ANGELO`` when replaced.
-
-## Addresses
-
-Street, unit, city/state/ZIP and PO Box lines are detected using the
-``usaddress`` library.  Adjacent lines are merged into a single multi-line
-address block so redaction replaces the entire address at once.  The merger is
-layout-aware and tolerates a single blank line between components.
-
-## Global span merger
-
-Detectors often emit overlapping spans describing the same text.  A global
-merger resolves these conflicts by applying a configurable precedence order and
-deterministic tie-breakers.  Within the same precedence tier, longer spans win
-over shorter ones and higher confidence scores break ties.  Address line spans
-are therefore typically superseded by their merged multi-line address blocks.
-
-## Dates vs DOBs
-
-The redactor differentiates between general dates and dates of birth.  Dates in
-contracts or correspondence are labelled ``DATE_GENERIC`` and preserved so they
-remain visible in the redacted text.  A date is upgraded to ``DOB`` only when
-nearby lexical triggers such as "DOB", "Date of Birth" or "born" make the
-birthdate intent clear.
-
-## Legal aliases
-
-Alias labels defined with phrases such as ``hereinafter``, ``a/k/a`` (also known
-as), ``f/k/a`` (formerly known as) or ``d/b/a`` (doing business as) are detected
-as ``ALIAS_LABEL`` spans.  Only the alias term itself is captured – for example
-``"Buyer"`` or ``"Morgan"`` – while trigger words and punctuation are ignored.
-When a subject name appears nearby, the detector records it so later stages can
-link all references to a consistent pseudonym.
-
-## Alias resolution and propagation
-
-Alias definitions are linked to their subjects and grouped into stable entity
-clusters.  Once an alias such as ``"Morgan"`` is defined for ``John Doe``, every
-later mention of ``Morgan`` is tagged with the same cluster identifier so
-pseudonym replacements remain consistent.  Role aliases like ``Buyer`` can be
-kept verbatim by setting ``redact.alias_labels`` to ``"keep_roles"`` – they are
-still linked for clustering but marked to skip replacement.
-
-## Replacement planning and application
-
-Detected spans are converted into a replacement plan that records the
-character offsets and final pseudonyms to insert.  Entries are applied in
-reverse order so indices remain valid.  Role labels may be preserved when
-``redact.alias_labels`` is set to ``"keep_roles"`` and generic dates remain
-unless ``redact.generic_dates`` is enabled.
-
-We run a bounded, deterministic safety check during planning to ensure generated emails use example.org, phones use safe 555 patterns, and numeric IDs don't collide with sensitive real values. If a first attempt looks unsafe, we retry with a salted key up to a small bound.
-
-```text
-Before: John Doe (the "Buyer") was born on July 4, 1982.
-After:  Alan Smith (the "Buyer") was born on May 9, 1960.
+```bash
+redactor run   --in samples/snippet.txt   --out out/sanitized.txt   --report out/report   --strict
 ```
 
-The applied plan provides an audit trail showing which spans were replaced and
-with what pseudonyms.
+- `--strict` enforces zero residuals; the command exits with code `6` if verification finds PII.
+- When `--report DIR` is provided, `verification.json` and audit/diff artifacts are written even on strict failure.
 
-## NER (optional)
+Useful toggles:
 
-Named-entity recognition for people, organizations and locations is provided
-via spaCy when available. Install the optional dependencies with
-`pip install .[ner]` and choose a model through
-`config.detectors.ner.model` (defaults to ``en_core_web_trf``). If spaCy or the
-model is unavailable, the detector falls back to lightweight pattern rules or a
-pure-Python regex engine. Setting `config.detectors.ner.require` to `true`
-raises an error instead of falling back.
+- `--keep-roles` / `--redact-roles` — preserve or pseudonymize role labels like “Buyer”
+- `--enable-ner` / `--disable-ner` — toggle the spaCy NER
+- `--require-secret` — fail fast if a seed secret is not configured
 
-## Coreference (optional)
+Exit codes: `0` success, `3` I/O error, `4` configuration/secret error, `5` pipeline error, `6` verification failure.
 
-Coreference links pronouns and short name variants to the same person so that
-different mentions receive consistent pseudonyms. Install the optional
-dependencies with `pip install .[coref]` and enable the feature via
-`detectors.coref.enabled: true`. By default the `auto` backend uses
-`fastcoref` when available and falls back to a lightweight regex heuristic.
-Pronouns themselves are never replaced; coref only assigns matching `entity_id`
-values to existing PERSON spans. Choose the regex backend for minimal
-dependencies or `fastcoref` for higher accuracy at the cost of a heavier model.
+---
 
-## Verification and leakage scoring
+## Configuration & Secrets
 
-After replacements are applied you can re-scan the redacted text for residual
-PII.  The verification scanner reuses the same detectors and produces a
-structured report with counts by entity label and an overall leakage score.
+Load defaults via `load_config()` and override with your own YAML. For deterministic pseudonyms across runs, set a seed secret:
 
-```python
-from redactor.config import load_config
-from redactor.verify.scanner import scan_text
-
-cfg = load_config()
-report = scan_text("Contact john@acme.com", cfg)
-print(report.counts_by_label)  # {'EMAIL': 1}
-print(report.score)            # 3
+```bash
+export REDACTOR_SEED_SECRET="your-secret-bytes"
 ```
 
-The command line interface honours `cfg.verification.fail_on_residual` and will
-exit with a non-zero status when any residual entities are found.
+Use `--require-secret` to enforce presence in automation. The seed’s *value* is never written to artifacts; only a boolean `seed_present` is recorded. The report writer refuses to write if a secret‑like value would be serialized.
 
-## Audit & diff artifacts
+---
 
-After applying a replacement plan you can build a local report bundle with
-`audit.json` and `diff.html`. The JSON file lists each replacement with fields
-such as `id`, `label`, `original_text`, `replacement_text` and `length_delta`.
-Because it includes the original sensitive text it should never be uploaded to
-remote systems. The HTML diff provides a side-by-side view of the before and
-after text with an index linking to each highlighted span.
+## Architecture
 
-These files are generated by `write_report_bundle` and saved next to any
-verification outputs. The CLI will call this helper in the next task.
+### Top‑level modules
+
+- `config` — configuration & schema
+- `io` — file readers/writers
+- `preprocess` — normalization & segmentation with char‑maps
+- `detect` — detectors (email/phone/account/address/date/DOB/aliases/bank, optional NER)
+- `link` — alias resolution, span merge, optional coref
+- `pseudo` — seeded ID/key derivation & shape‑preserving generators
+- `replace` — plan builder & fast reverse applier
+- `verify` — residual scan & leakage scoring; audit/diff writer
+- `evaluation` — fixtures, metrics, fuzz, perf
+- `utils` — shared helpers
+
+### Pipeline, End to End
+
+1) **Preprocess** (normalize, build line index)  
+2) **Detect** entities (pattern and optional NER)  
+3) **Merge** address lines into blocks; **resolve aliases**; **merge spans** globally  
+4) **Plan** replacements (deterministic pseudonyms) and **apply** in reverse  
+5) **Verify** residual PII; compute leakage score  
+6) **Report**: write `audit.json`, `diff.html`, `plan.json`, `verification.json` (optional)
+
+---
+
+## Pseudonymization
+
+### Names, Orgs & Banks
+
+Deterministic, shape‑preserving replacements keep token counts, casing, and punctuation (e.g., `J.D.` → initials form; `Acme LLC` → `Apex Vector LLC`; `Chase Bank, N.A.` → `Summit Bank, N.A.`).
+
+### Addresses
+
+Street, unit, city/state/ZIP and PO Box lines are detected (via `usaddress`) and merged into a multi‑line block so the whole address is replaced at once.
+
+### Dates vs DOB
+
+General dates (`DATE_GENERIC`) are preserved by default; only dates clearly marked as birthdates (`DOB`, with triggers like “DOB”, “D.O.B.”, “Date of Birth”) are replaced, with formats preserved (e.g., `M/D/YYYY` vs `Month D, YYYY`).
+
+### Aliases & Consistency
+
+Legal alias labels (e.g., `hereinafter`, `a/k/a`, `d/b/a`) are detected as `ALIAS_LABEL`. We link alias mentions and subjects so pseudonyms remain consistent. Role aliases (e.g., “Buyer”) can be preserved while keeping links for consistency.
+
+### Replacement Planning & Safety
+
+Plan entries hold exact `[start,end)` ranges and their replacements. We perform bounded safety checks at plan time to coerce risky candidates into safe shapes (emails → `example.org`, phones → `555` patterns, IDs with checksums or non‑colliding digits). Application is reverse, chunked, validated, and idempotent.
+
+---
+
+## Verification & Leakage Scoring
+
+After applying the plan, we re‑run the detectors over the redacted text, ignore our own known replacements, and compute an overall **leakage score** with per‑label residual counts. The CLI enforces strict mode when requested.
+
+---
+
+## Audit & Diff Artifacts
+
+`write_report_bundle(report_dir, ...)` writes:
+
+- **audit.json** — one entry per replacement (label, original/replacement text, offsets, deltas, metadata)  
+- **diff.html** — side‑by‑side, highlighted before/after view  
+- **plan.json** — minimal plan for reference  
+- **verification.json** — verification report (if provided)
+
+Artifacts intentionally contain original PII (audit.json); keep them local. The writer refuses to write if a secret‑like value would be serialized.
+
+---
 
 ## Fixtures
 
-A small corpus of fixtures lives under `evaluation/fixtures`. Each fixture pairs
-a plain text file with a `.spans.json` annotation file following a simple
-schema. Span offsets use 0-based, half-open `[start, end)` indices referencing
-the raw bytes of the `.txt` file.
-
-Run the integrity checks with:
+A small corpus under `evaluation/fixtures` pairs `.txt` content with `.spans.json` annotations using 0‑based, half‑open indices. Run the integrity checks:
 
 ```bash
 pytest -k fixtures_integrity
 ```
 
-These samples contain synthetic PII for testing purposes only and should not be
-shared outside this repository.
+These samples use synthetic PII and are not for external sharing.
+
+---
 
 ## Metrics
 
-The `evaluation.metrics` module offers a lightweight harness for measuring detection quality against the bundled fixtures. Spans are matched using intersection-over-union (IoU) with a default threshold of `0.5`. *Micro* scores sum counts across labels while *macro* scores average per label.
-
-Run the harness locally:
+`evaluation.metrics` computes precision/recall/F1 per label using IoU matching (default 0.5). Supports *coarse* labels and *fine* account subtypes (e.g., `ACCOUNT_ID:iban`).
 
 ```python
 from redactor.config import load_config
@@ -270,15 +196,11 @@ results = evaluate_all_fixtures(cfg)
 print(results["aggregate"].micro)
 ```
 
-Account numbers can be evaluated at different granularities. The default `granularity="coarse"` collapses subtypes to `ACCOUNT_ID` whereas `granularity="fine"` retains subtype labels such as `ACCOUNT_ID:cc` or `ACCOUNT_ID:iban`:
-
-```python
-evaluate_all_fixtures(cfg, granularity="fine")
-```
+---
 
 ## Performance (profiling)
 
-Measure per-stage timings directly in code:
+Programmatic per‑stage timings:
 
 ```python
 from redactor.config import load_config
@@ -288,68 +210,26 @@ cfg = load_config()
 timings = profile_pipeline("example text", cfg)
 ```
 
-Running the CLI with ``--verbose`` prints per-stage timings:
+CLI with `--verbose` prints per‑stage timings. The `profile_fixtures` helper uses `REDACTOR_PERF_REPEAT` to synthesize large inputs.
+
+---
+
+## Fuzz Testing
+
+Deterministic variants (zero‑width chars, NBSPs, hyphenation, quote and label variants, mixed EOLs) stress the pipeline:
 
 ```bash
-redactor run --in input.txt --out out.txt --verbose
+REDACTOR_FUZZ_N=50 pytest -k fuzz
 ```
 
-The ``profile_fixtures`` helper repeats fixture texts ``REDACTOR_PERF_REPEAT`` times (default ``10``) to synthesise larger inputs for profiling.
+Seeds derive from fixture names for reproducibility.
 
-## Name heuristics
+---
 
-`redactor.detect.names_person` offers dependency-free helpers for judging
-whether a string looks like a real personal name. Tokens are analysed for
-honorifics, initials, particles such as ``de`` or ``van``, hyphenated or
-apostrophized surnames and common suffixes like ``Jr.`` or ``III``. Each
-candidate receives a deterministic score based on these patterns (base +0.45 for
-``given + surname`` with bonuses for initials, particles and suffixes, and
-penalties for digits or role words). Names scoring ``≥ 0.60`` are considered
-probable. Examples: ``John Doe``, ``J. D. Salinger`` and ``Ludwig van
-Beethoven`` score as names, while ``Bank of America``, ``Buyer`` and
-``UNITED STATES`` do not. NER remains the primary detector; these heuristics
-refine and validate its output.
+## Contributing
 
-## Fuzz testing
+- Keep PRs scope‑small and add tests.
+- Run the full suite locally: `ruff check . && black --check . && mypy . && pytest -q`.
+- Optional: enable extras you need (`[addresses]`, `[ner]`, `[coref]`).
 
-The test suite includes deterministic fuzz tests that stress the pipeline with
-small but realistic perturbations. Variants insert zero-width characters, swap
-straight and curly quotes, replace spaces with non-breaking spaces, hyphenate
-long words, shuffle alias/DOB labels and mix line-ending styles.
-
-Run the fuzz tests locally with::
-
-    REDACTOR_FUZZ_N=50 pytest -k fuzz
-
-Each fixture derives its base seed from the fixture name so failures are
-reproducible across runs and platforms.
-
-## Quick start (CLI)
-
-```bash
-redactor run \
-  --in samples/snippet.txt \
-  --out out/sanitized.txt \
-  --report out/report \
-  --strict
-```
-
-Use ``--strict`` to enforce zero residuals; the command exits with code ``6`` if
-any PII remains after verification. When ``--report DIR`` is supplied,
-``verification.json`` and audit/diff artifacts are written even on strict
-failure to aid debugging.
-
-The command reads ``snippet.txt``, runs the full redaction pipeline and writes
-``sanitized.txt`` alongside an audit bundle in ``out/report`` containing
-``audit.json``, ``diff.html``, ``plan.json`` and ``verification.json``.
-
-Useful flags:
-
-* ``--keep-roles`` / ``--redact-roles`` – control whether role aliases such as
-  "Buyer" are preserved.
-* ``--enable-ner`` / ``--disable-ner`` – toggle the spaCy named‑entity detector.
-* ``--strict`` – enforce zero residuals; exit with code ``6`` if verification
-  finds PII (default is taken from the configuration).
-
-Exit codes: ``0`` success, ``3`` I/O error, ``4`` configuration error,
-``5`` pipeline error, ``6`` verification failure.
+---
