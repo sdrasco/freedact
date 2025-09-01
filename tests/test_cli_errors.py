@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from typer.testing import CliRunner
 
@@ -45,3 +46,30 @@ def test_bad_config(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 4
+
+
+def test_require_secret_missing(tmp_path: Path, monkeypatch: Any) -> None:
+    in_path = tmp_path / "in.txt"
+    in_path.write_text("hello", encoding="utf-8")
+    out_path = tmp_path / "out.txt"
+    monkeypatch.delenv("REDACTOR_SEED_SECRET", raising=False)
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["run", "--in", str(in_path), "--out", str(out_path), "--require-secret"],
+    )
+    assert result.exit_code == 4
+
+
+def test_require_secret_present(tmp_path: Path, monkeypatch: Any) -> None:
+    in_path = tmp_path / "in.txt"
+    in_path.write_text("hello", encoding="utf-8")
+    out_path = tmp_path / "out.txt"
+    monkeypatch.setenv("REDACTOR_SEED_SECRET", "unit-test-secret")
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["run", "--in", str(in_path), "--out", str(out_path), "--require-secret"],
+    )
+    assert result.exit_code == 0
+    assert out_path.exists()

@@ -80,6 +80,16 @@ name configured in `pseudonyms.seed.secret_env`) to cryptographically tie these
 values to your deployment. Omitting the secret still yields deterministic
 output but without cryptographic protection.
 
+## Seed secret (deterministic pseudonyms)
+
+For reproducible pseudonyms across runs, set `REDACTOR_SEED_SECRET` or
+configure `pseudonyms.seed.secret`.
+
+Use `--require-secret` in CI/automation to fail fast if the secret is missing.
+
+The secret is never written to audit artifacts; only a `seed_present` boolean
+is recorded.
+
 ## Pseudonym generator (stub)
 
 The current pseudonym generator maps each entity to a deterministic placeholder
