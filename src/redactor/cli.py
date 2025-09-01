@@ -18,6 +18,8 @@ Exit codes
 from __future__ import annotations
 
 from pathlib import Path
+from time import perf_counter
+from types import TracebackType
 from typing import Optional
 
 import typer
@@ -75,6 +77,30 @@ def _apply_overrides(
     if coref_backend is not None:
         new_cfg.detectors.coref.backend = coref_backend  # type: ignore[assignment]
     return new_cfg
+
+
+class Timing:
+    """Context manager measuring elapsed milliseconds."""
+
+    def __init__(self) -> None:
+        self._start = 0.0
+        self._end = 0.0
+
+    def __enter__(self) -> "Timing":
+        self._start = perf_counter()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self._end = perf_counter()
+
+    @property
+    def ms(self) -> float:
+        return (self._end - self._start) * 1000.0
 
 
 def _run_detectors(text: str, cfg: ConfigModel, context: DetectionContext) -> list[EntitySpan]:
@@ -189,42 +215,68 @@ def run(  # noqa: PLR0913
         typer.echo(f"Read {len(text)} chars", err=True)
 
     # Normalize
-    norm = normalize(text)
+    with Timing() as t_norm:
+        norm = normalize(text)
     normalized = norm.text
     if verbose:
-        typer.echo(f"Normalized (changed={norm.changed})", err=True)
+        typer.echo(f"Normalized (changed={norm.changed}) in {t_norm.ms:.1f} ms", err=True)
 
     line_starts = build_line_starts(normalized)
     context = DetectionContext(locale=cfg.locale, line_starts=line_starts, config=cfg)
 
     try:
-        spans = _run_detectors(normalized, cfg, context)
+        with Timing() as t_det:
+            spans = _run_detectors(normalized, cfg, context)
         if verbose:
-            typer.echo(f"Detected {len(spans)} spans", err=True)
+            typer.echo(f"Detected {len(spans)} spans in {t_det.ms:.1f} ms", err=True)
 
-        spans = layout_reconstructor.merge_address_lines_into_blocks(normalized, spans)
-        spans, clusters = alias_resolver.resolve_aliases(normalized, spans, cfg)
+        with Timing() as t_addr:
+            spans = layout_reconstructor.merge_address_lines_into_blocks(normalized, spans)
+        if verbose:
+            typer.echo(f"Address merge in {t_addr.ms:.1f} ms", err=True)
+
+        with Timing() as t_alias:
+            spans, clusters = alias_resolver.resolve_aliases(normalized, spans, cfg)
+        if verbose:
+            typer.echo(f"Alias resolve in {t_alias.ms:.1f} ms", err=True)
+
         if cfg.detectors.coref.enabled:
-            coref_result = coref.compute_coref(normalized, spans, cfg)
-            mapping = coref.unify_with_alias_clusters(spans, coref_result, clusters)
-            coref.assign_coref_entity_ids(spans, coref_result, mapping)
-        merged_spans = span_merger.merge_spans(spans, cfg)
-        if verbose:
-            typer.echo(f"Merged to {len(merged_spans)} spans", err=True)
+            with Timing() as t_coref:
+                coref_result = coref.compute_coref(normalized, spans, cfg)
+                mapping = coref.unify_with_alias_clusters(spans, coref_result, clusters)
+                coref.assign_coref_entity_ids(spans, coref_result, mapping)
+            if verbose:
+                typer.echo(f"Coref in {t_coref.ms:.1f} ms", err=True)
+        elif verbose:
+            typer.echo("Coref disabled", err=True)
 
-        plan = build_replacement_plan(normalized, merged_spans, cfg, clusters=clusters)
+        with Timing() as t_merge:
+            merged_spans = span_merger.merge_spans(spans, cfg)
         if verbose:
-            typer.echo(f"Built plan with {len(plan)} entries", err=True)
+            typer.echo(
+                f"Merged to {len(merged_spans)} spans in {t_merge.ms:.1f} ms",
+                err=True,
+            )
 
-        redacted_text, applied_plan = apply_plan(normalized, plan)
+        with Timing() as t_plan:
+            plan = build_replacement_plan(normalized, merged_spans, cfg, clusters=clusters)
         if verbose:
-            typer.echo("Applied plan", err=True)
+            typer.echo(
+                f"Built plan with {len(plan)} entries in {t_plan.ms:.1f} ms",
+                err=True,
+            )
 
-        verification_report = scanner.scan_text(redacted_text, cfg, applied_plan=applied_plan)
+        with Timing() as t_apply:
+            redacted_text, applied_plan = apply_plan(normalized, plan)
+        if verbose:
+            typer.echo(f"Applied plan in {t_apply.ms:.1f} ms", err=True)
+
+        with Timing() as t_verify:
+            verification_report = scanner.scan_text(redacted_text, cfg, applied_plan=applied_plan)
         if verbose:
             typer.echo(
                 f"Verification residuals={verification_report.residual_count} "
-                f"score={verification_report.score}",
+                f"score={verification_report.score} in {t_verify.ms:.1f} ms",
                 err=True,
             )
     except Exception as exc:  # pragma: no cover - unexpected
@@ -239,6 +291,8 @@ def run(  # noqa: PLR0913
         write_file(out_path, redacted_text, encoding=encoding_out, newline=newline_arg)
     except (UnsupportedFormatError, OSError) as exc:
         _safe_exit(3, str(exc))
+    if verbose:
+        typer.echo("Wrote output", err=True)
 
     written: dict[str, str] = {"out": str(out_path)}
     if report_dir is not None:

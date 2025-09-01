@@ -241,6 +241,25 @@ Account numbers can be evaluated at different granularities. The default `granul
 evaluate_all_fixtures(cfg, granularity="fine")
 ```
 
+## Performance (profiling)
+
+Measure per-stage timings directly in code:
+
+```python
+from redactor.config import load_config
+from evaluation.perf import profile_pipeline
+
+cfg = load_config()
+timings = profile_pipeline("example text", cfg)
+```
+
+Running the CLI with ``--verbose`` prints per-stage timings:
+
+```bash
+redactor run --in input.txt --out out.txt --verbose
+```
+
+The ``profile_fixtures`` helper repeats fixture texts ``REDACTOR_PERF_REPEAT`` times (default ``10``) to synthesise larger inputs for profiling.
 
 ## Name heuristics
 
