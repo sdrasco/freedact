@@ -318,14 +318,7 @@ def run(  # noqa: PLR0913
         if verbose:
             typer.echo(f"Applied plan in {t_apply.ms:.1f} ms", err=True)
 
-        with Timing() as t_verify:
-            verification_report = scanner.scan_text(redacted_text, cfg, applied_plan=applied_plan)
-        if verbose:
-            typer.echo(
-                f"Verification residuals={verification_report.residual_count} "
-                f"score={verification_report.score} in {t_verify.ms:.1f} ms",
-                err=True,
-            )
+        verification_report = scanner.scan_text(redacted_text, cfg, applied_plan=applied_plan)
     except Exception as exc:  # pragma: no cover - unexpected
         msg = str(exc)
         if verbose:
@@ -354,8 +347,23 @@ def run(  # noqa: PLR0913
         written.update(bundle)
         if verbose:
             typer.echo(f"Report written to {report_dir}", err=True)
-
-    if strict_mode and verification_report.residual_count > 0:
-        _safe_exit(6, None)
+    if verification_report.residual_count > 0:
+        if strict_mode:
+            if verbose:
+                typer.echo(
+                    "Strict mode: residual_count="
+                    f"{verification_report.residual_count} score={verification_report.score}"
+                    " \u2192 exiting with code 6",
+                    err=True,
+                )
+            _safe_exit(6, None)
+        elif verbose:
+            typer.echo(
+                "Residuals present but strict mode off: residual_count="
+                f"{verification_report.residual_count} score={verification_report.score}",
+                err=True,
+            )
+    elif verbose:
+        typer.echo("Verification passed: residual_count=0 score=0", err=True)
 
     return written

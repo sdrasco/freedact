@@ -334,6 +334,11 @@ redactor run \
   --strict
 ```
 
+Use ``--strict`` to enforce zero residuals; the command exits with code ``6`` if
+any PII remains after verification. When ``--report DIR`` is supplied,
+``verification.json`` and audit/diff artifacts are written even on strict
+failure to aid debugging.
+
 The command reads ``snippet.txt``, runs the full redaction pipeline and writes
 ``sanitized.txt`` alongside an audit bundle in ``out/report`` containing
 ``audit.json``, ``diff.html``, ``plan.json`` and ``verification.json``.
@@ -343,8 +348,8 @@ Useful flags:
 * ``--keep-roles`` / ``--redact-roles`` – control whether role aliases such as
   "Buyer" are preserved.
 * ``--enable-ner`` / ``--disable-ner`` – toggle the spaCy named‑entity detector.
-* ``--strict`` – exit with code ``6`` if verification finds residual PII
-  (default is taken from the configuration).
+* ``--strict`` – enforce zero residuals; exit with code ``6`` if verification
+  finds PII (default is taken from the configuration).
 
 Exit codes: ``0`` success, ``3`` I/O error, ``4`` configuration error,
 ``5`` pipeline error, ``6`` verification failure.
