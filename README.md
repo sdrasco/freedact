@@ -4,8 +4,6 @@
 
 Freedact automatically replaces private details in documents with consistent, realistic pseudonyms. It runs entirely on your own machine, so the redaction itself never uses the cloud or introduces new risks. The result is a version you can safely share with AI tools or other online services without exposing the original sensitive information.
 
----
-
 ## Table of Contents
 
 - [Features](#features)
@@ -29,7 +27,7 @@ Freedact automatically replaces private details in documents with consistent, re
 - [Fuzz Testing](#fuzz-testing)
 - [Contributing](#contributing)
 
----
+
 
 ## Features
 
@@ -43,7 +41,7 @@ Freedact automatically replaces private details in documents with consistent, re
 - **Fixtures, metrics, fuzz & perf** harnesses to keep quality high in CI.
 - **CLI** with strict mode and rich but test‑friendly help output.
 
----
+
 
 ## Install
 
@@ -67,7 +65,7 @@ pip install -e .[all]         # all optional features
 
 NER and coreference are optional and disabled by default. The base install already includes phone and account detectors.
 
----
+
 
 ## Quick Start (CLI)
 
@@ -86,7 +84,7 @@ Useful toggles:
 
 Exit codes: `0` success, `3` I/O error, `4` configuration/secret error, `5` pipeline error, `6` verification failure.
 
----
+
 
 ## Configuration & Secrets
 
@@ -98,7 +96,7 @@ export REDACTOR_SEED_SECRET="your-secret-bytes"
 
 Use `--require-secret` to enforce presence in automation. The seed’s *value* is never written to artifacts; only a boolean `seed_present` is recorded. The report writer refuses to write if a secret‑like value would be serialized.
 
----
+
 
 ## Architecture
 
@@ -124,7 +122,7 @@ Use `--require-secret` to enforce presence in automation. The seed’s *value* i
 5) **Verify** residual PII; compute leakage score  
 6) **Report**: write `audit.json`, `diff.html`, `plan.json`, `verification.json` (optional)
 
----
+
 
 ## Pseudonymization
 
@@ -148,13 +146,13 @@ Legal alias labels (e.g., `hereinafter`, `a/k/a`, `d/b/a`) are detected as `ALIA
 
 Plan entries hold exact `[start,end)` ranges and their replacements. We perform bounded safety checks at plan time to coerce risky candidates into safe shapes (emails → `example.org`, phones → `555` patterns, IDs with checksums or non‑colliding digits). Application is reverse, chunked, validated, and idempotent.
 
----
+
 
 ## Verification & Leakage Scoring
 
 After applying the plan, we re‑run the detectors over the redacted text, ignore our own known replacements, and compute an overall **leakage score** with per‑label residual counts. The CLI enforces strict mode when requested.
 
----
+
 
 ## Audit & Diff Artifacts
 
@@ -167,7 +165,7 @@ After applying the plan, we re‑run the detectors over the redacted text, ignor
 
 Artifacts intentionally contain original PII (audit.json); keep them local. The writer refuses to write if a secret‑like value would be serialized.
 
----
+
 
 ## Fixtures
 
@@ -179,7 +177,7 @@ pytest -k fixtures_integrity
 
 These samples use synthetic PII and are not for external sharing.
 
----
+
 
 ## Metrics
 
@@ -194,7 +192,7 @@ results = evaluate_all_fixtures(cfg)
 print(results["aggregate"].micro)
 ```
 
----
+
 
 ## Performance (profiling)
 
@@ -210,7 +208,7 @@ timings = profile_pipeline("example text", cfg)
 
 CLI with `--verbose` prints per‑stage timings. The `profile_fixtures` helper uses `REDACTOR_PERF_REPEAT` to synthesize large inputs.
 
----
+
 
 ## Fuzz Testing
 
@@ -222,7 +220,7 @@ REDACTOR_FUZZ_N=50 pytest -k fuzz
 
 Seeds derive from fixture names for reproducibility.
 
----
+
 
 ## Contributing
 
@@ -230,4 +228,4 @@ Seeds derive from fixture names for reproducibility.
 - Run the full suite locally: `ruff check . && black --check . && mypy . && pytest -q`.
 - Optional: enable extras you need (`[addresses]`, `[ner]`, `[coref]`).
 
----
+
