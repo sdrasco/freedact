@@ -28,6 +28,10 @@ from __future__ import annotations
 import re
 from typing import cast
 
+from ..utils.constants import rtrim_index
+
+from ..utils.constants import rtrim_index
+
 from phonenumbers import (
     SUPPORTED_REGIONS,
     Leniency,
@@ -50,15 +54,7 @@ __all__ = ["PhoneDetector", "get_detector"]
 # Helpers
 # ---------------------------------------------------------------------------
 
-TRAILING_PUNCTUATION = "),]};:,.!?»”’>"
-
-_NO_PREFIX_RE = re.compile(r"(?i)No\.\s*$")
-
-
-def _lookup_leniency(name: str) -> int:
-    """Return the numeric value of leniency ``name`` if available."""
-
-    return getattr(Leniency, name, Leniency.VALID)
+NO_PREFIX_RX: re.Pattern[str] = re.compile(r"(?i)No\.\s*$")
 
 
 def normalize_region(locale: str | None) -> str | None:
@@ -78,8 +74,14 @@ def normalize_region(locale: str | None) -> str | None:
 
 
 # Determine leniency and associated confidence score at import time.
-_LENIENCY: Leniency = cast(Leniency, _lookup_leniency("STRICT_GROUPING"))
-_CONFIDENCE = 0.99 if getattr(_LENIENCY, "name", "") == "STRICT_GROUPING" else 0.98
+_STRICT = getattr(Leniency, "STRICT_GROUPING", None)
+_LENIENCY: int
+if _STRICT is not None:
+    _LENIENCY = int(cast(int, _STRICT))
+    _CONFIDENCE = 0.99
+else:
+    _LENIENCY = int(Leniency.VALID)
+    _CONFIDENCE = 0.98
 
 
 def _phone_type_name(num: PhoneNumber) -> str:
@@ -100,7 +102,7 @@ class PhoneDetector:
     """Detect phone numbers within text."""
 
     _confidence: float = _CONFIDENCE
-    _leniency: Leniency = _LENIENCY
+    _leniency: int = _LENIENCY
 
     def name(self) -> str:  # pragma: no cover - trivial
         return "phone"
@@ -109,7 +111,7 @@ class PhoneDetector:
         """Detect phone numbers in ``text``."""
 
         region = normalize_region(context.locale if context else None)
-        matcher = PhoneNumberMatcher(text, region, leniency=cast(int, self._leniency))
+        matcher = PhoneNumberMatcher(text, region, leniency=self._leniency)
 
         spans: list[EntitySpan] = []
         for match in matcher:
@@ -121,17 +123,15 @@ class PhoneDetector:
                 continue
             if "§" in matched_text or "§" in text[max(0, start - 2) : start]:
                 continue
-            if _NO_PREFIX_RE.search(text[max(0, start - 5) : start]):
+            if NO_PREFIX_RX.search(text[max(0, start - 5) : start]):
                 continue
 
             num = match.number
             if not is_valid_number(num):
                 continue
 
-            # Trim trailing punctuation that is outside the phone number.
-            while matched_text and matched_text[-1] in TRAILING_PUNCTUATION:
-                end -= 1
-                matched_text = matched_text[:-1]
+            end = rtrim_index(text, end)
+            matched_text = text[start:end]
 
             attrs: dict[str, object] = {
                 "e164": format_number(num, PhoneNumberFormat.E164),

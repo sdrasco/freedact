@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 
+from ..utils.constants import rtrim_index
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["EmailDetector", "get_detector"]
@@ -34,7 +35,7 @@ DOMAIN_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
 TLD = r"[A-Za-z]{2,63}"
 DOMAIN = rf"(?:{DOMAIN_LABEL}\.)+{TLD}"
 
-EMAIL_REGEX = re.compile(
+EMAIL_RX: re.Pattern[str] = re.compile(
     rf"""
     (?<![A-Za-z0-9!#$%&'*+/=?^_`{{|}}~.-])   # ensure preceding boundary
     ({LOCAL_PART}@{DOMAIN})
@@ -42,8 +43,6 @@ EMAIL_REGEX = re.compile(
     """,
     re.VERBOSE | re.IGNORECASE,
 )
-
-TRAILING_PUNCTUATION = ")],;:,.!?»”’>"
 
 
 def _has_consecutive_dots(value: str) -> bool:
@@ -88,14 +87,10 @@ class EmailDetector:
 
         _ = context
         spans: list[EntitySpan] = []
-        for match in EMAIL_REGEX.finditer(text):
+        for match in EMAIL_RX.finditer(text):
             start, end = match.span(1)
-            email_text = match.group(1)
-
-            # Trim trailing punctuation that may neighbour the email in prose.
-            while email_text and email_text[-1] in TRAILING_PUNCTUATION:
-                email_text = email_text[:-1]
-                end -= 1
+            end = rtrim_index(text, end)
+            email_text = text[start:end]
 
             local, domain = email_text.rsplit("@", 1)
             if not (_validate_local(local) and _validate_domain(domain)):
@@ -109,7 +104,7 @@ class EmailDetector:
                 base_local, tag = local, None
 
             tld = domain_lower.rsplit(".", 1)[1]
-            attrs = {
+            attrs: dict[str, object] = {
                 "local": local,
                 "domain": domain_lower,
                 "normalized": f"{local}@{domain_lower}",

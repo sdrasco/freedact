@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
+from ..utils.constants import rtrim_index
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["BankOrgDetector", "get_detector"]
@@ -30,28 +31,26 @@ __all__ = ["BankOrgDetector", "get_detector"]
 # Patterns and constants
 # ---------------------------------------------------------------------------
 
-TRAILING_PUNCTUATION = ")]};:,.!?»”’>"
-
 _EXCLUDED_PRECEDING = {"Food", "Blood", "Sperm", "Milk", "Energy", "Data"}
 _AFTER_BANK_KEYWORDS = {"account", "accounts", "holiday"}
 
 _SUFFIX_PART = r"N\.??\s?A\.??|National\s+Association|PLC|plc|N\.??\s?V\.??|LLC|Ltd\.??|Limited|USA"
 
-_RX_CREDIT_UNION = re.compile(
+RX_CREDIT_UNION: re.Pattern[str] = re.compile(
     r"""
     \b([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*)\s+Credit\s+Union\b
     """,
     re.VERBOSE,
 )
 
-_RX_TRUST_COMPANY = re.compile(
+RX_TRUST_CO: re.Pattern[str] = re.compile(
     r"""
     \b([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*)\s+Trust\s+Company\b
     """,
     re.VERBOSE,
 )
 
-_RX_BANK_AND_TRUST = re.compile(
+RX_BANK_AND_TRUST: re.Pattern[str] = re.compile(
     r"""
     \b([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*)\s+
     (?:Bank\s&\s*Trust|Bank\s+and\s+Trust)(?:\s+Company)?\b
@@ -61,7 +60,7 @@ _RX_BANK_AND_TRUST = re.compile(
 
 # ``Bank of …`` – allows optional tokens before ``Bank`` and an optional
 # corporate suffix following the institution name.
-_RX_BANK_OF = re.compile(
+RX_BANK_OF: re.Pattern[str] = re.compile(
     rf"""
     \b(?:[A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*\s+)?
     Bank\s+of\s+[A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*
@@ -71,7 +70,7 @@ _RX_BANK_OF = re.compile(
 )
 
 # Plain "… Bank" with optional corporate suffix.
-_RX_BANK = re.compile(
+RX_PLAIN_BANK: re.Pattern[str] = re.compile(
     rf"""
     \b([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*)\s+Bank
     (?: (?:,\s*|\s+)(?P<suffix>{_SUFFIX_PART}))?(?=[^\w]|$)
@@ -80,7 +79,7 @@ _RX_BANK = re.compile(
 )
 
 # Single token ending with "bank" followed by NA/National Association.
-_RX_TOKEN_BANK_SUFFIX = re.compile(
+RX_BANK_SUFFIX: re.Pattern[str] = re.compile(
     r"""
     \b([A-Z][A-Za-z0-9&.'-]*bank)\b(?:,\s)?(?P<suffix>N\.??\s?A\.??|National\s+Association)(?=[^\w]|$)
     """,
@@ -142,14 +141,6 @@ def _is_mostly_lower(text: str) -> bool:
     return bool(title_count < len(tokens) / 2)
 
 
-def _trim_end(text: str, start: int, end: int) -> int:
-    """Trim trailing punctuation characters from ``text[start:end]``."""
-
-    while end > start and text[end - 1] in TRAILING_PUNCTUATION:
-        end -= 1
-    return end
-
-
 def _preceding_word(full_text: str, start: int, match_text: str) -> str | None:
     """Return the word immediately preceding ``Bank`` within the match."""
 
@@ -197,7 +188,7 @@ class BankOrgDetector:
         def handle_matches(matches: Iterable[re.Match[str]], kind: str, hint: str) -> None:
             for m in matches:
                 start, end = m.span()
-                end = _trim_end(text, start, end)
+                end = rtrim_index(text, end)
                 span_text = text[start:end]
                 suffix_raw = m.groupdict().get("suffix")
 
@@ -244,14 +235,12 @@ class BankOrgDetector:
                     )
                 )
 
-        handle_matches(_RX_CREDIT_UNION.finditer(text), "credit_union", "rx_credit_union")
-        handle_matches(_RX_TRUST_COMPANY.finditer(text), "trust_company", "rx_trust_company")
-        handle_matches(_RX_BANK_AND_TRUST.finditer(text), "bank_and_trust", "rx_bank_and_trust")
-        handle_matches(_RX_BANK_OF.finditer(text), "bank_of", "rx_bank_of")
-        handle_matches(_RX_BANK.finditer(text), "bank", "rx_bank")
-        handle_matches(
-            _RX_TOKEN_BANK_SUFFIX.finditer(text), "token_bank_suffix", "rx_token_bank_suffix"
-        )
+        handle_matches(RX_CREDIT_UNION.finditer(text), "credit_union", "rx_credit_union")
+        handle_matches(RX_TRUST_CO.finditer(text), "trust_company", "rx_trust_company")
+        handle_matches(RX_BANK_AND_TRUST.finditer(text), "bank_and_trust", "rx_bank_and_trust")
+        handle_matches(RX_BANK_OF.finditer(text), "bank_of", "rx_bank_of")
+        handle_matches(RX_PLAIN_BANK.finditer(text), "bank", "rx_bank")
+        handle_matches(RX_BANK_SUFFIX.finditer(text), "token_bank_suffix", "rx_token_bank_suffix")
 
         # Resolve overlaps and duplicates
         candidates.sort(key=lambda s: (s.start, s.end))

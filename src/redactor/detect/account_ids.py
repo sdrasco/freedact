@@ -34,20 +34,23 @@ try:
 except Exception:  # pragma: no cover - missing module
     routing_number = cast(Any, None)
 
+from ..utils.constants import rtrim_index
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["AccountIdDetector", "get_detector"]
 
-TRAILING_PUNCTUATION = ")]};:,.!?»”’>"
-
 # Regular expressions for each subtype -------------------------------------------------------
-_IBAN_RE = re.compile(r"\b([A-Z]{2}[0-9]{2}(?:[ ]?[A-Z0-9]{1,4}){2,})\b", re.IGNORECASE)
-_BIC_RE = re.compile(r"\b([A-Za-z]{4}[A-Za-z]{2}[A-Za-z0-9]{2}(?:[A-Za-z0-9]{3})?)\b")
-_ABA_RE = re.compile(r"\b([0-9]{9})\b")
-_CC_RE = re.compile(r"\b((?:\d[ -]?){13,19})\b")
-_SSN_RE = re.compile(r"\b(\d{3}-\d{2}-\d{4}|\d{9})\b")
-_EIN_RE = re.compile(r"\b(\d{2}-\d{7}|\d{9})\b")
-_GENERIC_RE = re.compile(
+IBAN_RX: re.Pattern[str] = re.compile(
+    r"\b([A-Z]{2}[0-9]{2}(?:[ ]?[A-Z0-9]{1,4}){2,})\b", re.IGNORECASE
+)
+SWIFT_BIC_RX: re.Pattern[str] = re.compile(
+    r"\b([A-Za-z]{4}[A-Za-z]{2}[A-Za-z0-9]{2}(?:[A-Za-z0-9]{3})?)\b"
+)
+ABA_RX: re.Pattern[str] = re.compile(r"\b([0-9]{9})\b")
+CC_RX: re.Pattern[str] = re.compile(r"\b((?:\d[ -]?){13,19})\b")
+SSN_RX: re.Pattern[str] = re.compile(r"\b(\d{3}-\d{2}-\d{4}|\d{9})\b")
+EIN_RX: re.Pattern[str] = re.compile(r"\b(\d{2}-\d{7}|\d{9})\b")
+GENERIC_HINT_RX: re.Pattern[str] = re.compile(
     (
         r"\b(?:[A-Za-z]?(?:acct|account|a/c|iban|iban:|iban#|acct#|account#|sort\scode)"
         r"[:\s#]+([A-Za-z0-9][A-Za-z0-9 -]{4,}))"
@@ -89,8 +92,7 @@ class _Candidate:
 def _trim(text: str, start: int, end: int) -> tuple[int, str]:
     """Trim trailing punctuation and return new end and substring."""
 
-    while end > start and text[end - 1] in TRAILING_PUNCTUATION:
-        end -= 1
+    end = rtrim_index(text, end)
     return end, text[start:end]
 
 
@@ -108,7 +110,7 @@ class AccountIdDetector:
         candidates: List[_Candidate] = []
 
         # IBAN -----------------------------------------------------------------
-        for match in _IBAN_RE.finditer(text):
+        for match in IBAN_RX.finditer(text):
             start, end = match.span(1)
             end, raw = _trim(text, start, end)
             try:
@@ -136,7 +138,7 @@ class AccountIdDetector:
             candidates.append(_Candidate(span, "iban"))
 
         # SWIFT/BIC ------------------------------------------------------------
-        for match in _BIC_RE.finditer(text):
+        for match in SWIFT_BIC_RX.finditer(text):
             start, end = match.span(1)
             if (start > 0 and text[start - 1].isalnum()) or (
                 end < len(text) and text[end].isalnum()
@@ -165,7 +167,7 @@ class AccountIdDetector:
             candidates.append(_Candidate(span, "swift_bic"))
 
         # ABA routing numbers --------------------------------------------------
-        for match in _ABA_RE.finditer(text):
+        for match in ABA_RX.finditer(text):
             start, end = match.span(1)
             context_window = text[max(0, start - 20) : min(len(text), end + 20)].lower()
             if not any(keyword in context_window for keyword in _ROUTING_KEYWORDS):
@@ -194,7 +196,7 @@ class AccountIdDetector:
             candidates.append(_Candidate(span, "routing_aba"))
 
         # Credit/debit cards ---------------------------------------------------
-        for match in _CC_RE.finditer(text):
+        for match in CC_RX.finditer(text):
             start, end = match.span(1)
             end, raw = _trim(text, start, end)
             digits = re.sub(r"[ -]", "", raw)
@@ -229,7 +231,7 @@ class AccountIdDetector:
             candidates.append(_Candidate(span, "cc"))
 
         # SSN ------------------------------------------------------------------
-        for match in _SSN_RE.finditer(text):
+        for match in SSN_RX.finditer(text):
             start, end = match.span(1)
             if "§" in text[max(0, start - 3) : start]:
                 continue
@@ -257,7 +259,7 @@ class AccountIdDetector:
             candidates.append(_Candidate(span, "ssn"))
 
         # EIN ------------------------------------------------------------------
-        for match in _EIN_RE.finditer(text):
+        for match in EIN_RX.finditer(text):
             start, end = match.span(1)
             end, raw = _trim(text, start, end)
             digits = raw.replace("-", "")
@@ -283,7 +285,7 @@ class AccountIdDetector:
             candidates.append(_Candidate(span, "ein"))
 
         # Generic account numbers ----------------------------------------------
-        for match in _GENERIC_RE.finditer(text):
+        for match in GENERIC_HINT_RX.finditer(text):
             start, end = match.span(1)
             end, raw = _trim(text, start, end)
             compact = re.sub(r"[ -]", "", raw).upper()

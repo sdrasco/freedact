@@ -30,6 +30,7 @@ from redactor.preprocess.layout_reconstructor import (
     find_line_for_char,
 )
 
+from ..utils.constants import rtrim_index
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["AliasDetector", "get_detector"]
@@ -44,7 +45,6 @@ NAME_PHRASE = rf"{NAME_TOKEN}(?:\s+{NAME_TOKEN}){{0,6}}"
 
 QUOTE_CHARS = "\"'“”‘’"
 QUOTE_CLASS = re.escape(QUOTE_CHARS)
-TRAILING_PUNCTUATION = ")]};:,.!?»”’>"
 
 ROLE_LABELS: frozenset[str] = frozenset(
     {
@@ -70,9 +70,10 @@ ROLE_LABELS: frozenset[str] = frozenset(
         "Recipient",
     }
 )
+RX_ROLE_ALIAS: re.Pattern[str] = re.compile(rf"^(?:{'|'.join(sorted(ROLE_LABELS))})$")
 
 
-HEREIN_WITH_SUBJECT_REGEX = re.compile(
+RX_HEREINAFTER_WITH_SUBJ: re.Pattern[str] = re.compile(
     rf"""
     (?P<subject>{NAME_PHRASE})\s*,?\s*
     (?P<trigger>hereinafter|hereafter)\s+
@@ -82,7 +83,7 @@ HEREIN_WITH_SUBJECT_REGEX = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-HEREIN_ALIAS_ONLY_REGEX = re.compile(
+RX_HEREINAFTER_ALIAS_ONLY: re.Pattern[str] = re.compile(
     rf"""
     (?P<trigger>hereinafter|hereafter)\s+
     (?:referred\s+to\s+as\s+)?
@@ -91,7 +92,7 @@ HEREIN_ALIAS_ONLY_REGEX = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-AKA_QUOTED_REGEX = re.compile(
+RX_AKA_FKA_DBA_QUOTED: re.Pattern[str] = re.compile(
     rf"""
     (?P<subject>{NAME_PHRASE})\s*,?\s*
     (?P<trigger>a/k/a|aka|f/k/a|fka|d/b/a|dba)\s+
@@ -100,7 +101,7 @@ AKA_QUOTED_REGEX = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-AKA_UNQUOTED_REGEX = re.compile(
+RX_AKA_FKA_DBA: re.Pattern[str] = re.compile(
     rf"""
     (?P<subject>{NAME_PHRASE})\s*,?\s*
     (?P<trigger>a/k/a|aka|f/k/a|fka|d/b/a|dba)\s+
@@ -153,11 +154,9 @@ def _guess_subject(
     return None, None
 
 
-def _trim(alias: str, end: int) -> tuple[str, int]:
-    while alias and alias[-1] in TRAILING_PUNCTUATION:
-        alias = alias[:-1]
-        end -= 1
-    return alias, end
+def _trim(text: str, start: int, end: int) -> tuple[str, int]:
+    end = rtrim_index(text, end)
+    return text[start:end], end
 
 
 @dataclass(slots=True)
@@ -178,9 +177,9 @@ def _iter_matches(text: str) -> Iterator[_MatchInfo]:
     line_index = build_line_index(text)
 
     patterns: Iterable[re.Pattern[str]] = (
-        HEREIN_WITH_SUBJECT_REGEX,
-        AKA_QUOTED_REGEX,
-        AKA_UNQUOTED_REGEX,
+        RX_HEREINAFTER_WITH_SUBJ,
+        RX_AKA_FKA_DBA_QUOTED,
+        RX_AKA_FKA_DBA,
     )
 
     for pattern in patterns:
@@ -205,7 +204,7 @@ def _iter_matches(text: str) -> Iterator[_MatchInfo]:
                 0.99,
             )
 
-    for m in HEREIN_ALIAS_ONLY_REGEX.finditer(text):
+    for m in RX_HEREINAFTER_ALIAS_ONLY.finditer(text):
         alias_start, alias_end = m.span("alias")
         trigger = _normalize_trigger(m.group("trigger"))
         q1 = m.groupdict().get("q1")
@@ -242,8 +241,7 @@ class AliasDetector:
         _ = context
         spans: list[EntitySpan] = []
         for mi in _iter_matches(text):
-            alias_text = text[mi.alias_start : mi.alias_end]
-            alias_text, alias_end = _trim(alias_text, mi.alias_end)
+            alias_text, alias_end = _trim(text, mi.alias_start, mi.alias_end)
             if not alias_text:
                 continue
             if "@" in alias_text:
@@ -251,7 +249,7 @@ class AliasDetector:
             tokens = alias_text.split()
             if len(tokens) > 6 and any(t and t[0].islower() for t in tokens):
                 continue
-            alias_kind = "role" if alias_text in ROLE_LABELS else "nickname"
+            alias_kind = "role" if RX_ROLE_ALIAS.fullmatch(alias_text) else "nickname"
             role_flag = alias_kind == "role"
 
             attrs: dict[str, object] = {

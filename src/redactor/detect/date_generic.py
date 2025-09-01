@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from typing import Dict, Tuple
 
+from ..utils.constants import rtrim_index
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["DateGenericDetector", "get_detector"]
@@ -26,8 +27,6 @@ __all__ = ["DateGenericDetector", "get_detector"]
 # ---------------------------------------------------------------------------
 # Helpers and regular expressions
 # ---------------------------------------------------------------------------
-
-TRAILING_PUNCTUATION = ")]};:,.!?»”’>"
 
 _MONTHS: Dict[str, str] = {
     "january": "01",
@@ -56,21 +55,22 @@ _MONTHS: Dict[str, str] = {
     "dec": "12",
 }
 
-_MONTH_NAME_PATTERN = "|".join(sorted(_MONTHS.keys(), key=len, reverse=True))
+MONTH_NAME_PATTERN = "|".join(sorted(_MONTHS.keys(), key=len, reverse=True))
 
-_MONTH_NAME_MDY_RE = re.compile(
-    rf"\b({_MONTH_NAME_PATTERN})\s+(\d{{1,2}}(?:st|nd|rd|th)?),?\s+(\d{{4}})\b",
-    re.IGNORECASE,
+MONTH_NAME_RX: re.Pattern[str] = re.compile(
+    rf"""
+    \b(
+        (?P<month1>{MONTH_NAME_PATTERN})\s+(?P<day1>\d{{1,2}}(?:st|nd|rd|th)?),?\s+(?P<year1>\d{{4}})
+        |
+        (?P<day2>\d{{1,2}}(?:st|nd|rd|th)?)\s+(?P<month2>{MONTH_NAME_PATTERN})\s+(?P<year2>\d{{4}})
+    )\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
 
-_MONTH_NAME_DMY_RE = re.compile(
-    rf"\b(\d{{1,2}}(?:st|nd|rd|th)?)\s+({_MONTH_NAME_PATTERN})\s+(\d{{4}})\b",
-    re.IGNORECASE,
-)
+ISO_RX: re.Pattern[str] = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
-_ISO_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
-
-_NUMERIC_RE = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
+MDY_RX: re.Pattern[str] = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
 
 
 def _is_leap(year: int) -> bool:
@@ -125,17 +125,24 @@ class DateGenericDetector:
         _ = context
         spans: list[EntitySpan] = []
 
-        for match in _MONTH_NAME_MDY_RE.finditer(text):
-            month_name, day_raw, year = match.groups()
+        for match in MONTH_NAME_RX.finditer(text):
             start, end = match.span()
+            end = rtrim_index(text, end)
             date_text = text[start:end]
-            while date_text and date_text[-1] in TRAILING_PUNCTUATION:
-                end -= 1
-                date_text = date_text[:-1]
+            if match.group("month1"):
+                month_name = match.group("month1")
+                day_raw = match.group("day1")
+                year = match.group("year1")
+                fmt = "month_name_mdY"
+            else:
+                day_raw = match.group("day2")
+                month_name = match.group("month2")
+                year = match.group("year2")
+                fmt = "month_name_dmY"
             day = re.sub(r"(?i)(st|nd|rd|th)$", "", day_raw)
             month_num = _MONTHS.get(month_name.lower(), "00")
             normalized, components = _normalize(year, month_num, day)
-            attrs: Dict[str, object] = {"format": "month_name_mdY", "normalized": normalized}
+            attrs: Dict[str, object] = {"format": fmt, "normalized": normalized}
             if components:
                 attrs["components"] = components
             spans.append(
@@ -150,38 +157,11 @@ class DateGenericDetector:
                 )
             )
 
-        for match in _MONTH_NAME_DMY_RE.finditer(text):
-            day_raw, month_name, year = match.groups()
-            start, end = match.span()
-            date_text = text[start:end]
-            while date_text and date_text[-1] in TRAILING_PUNCTUATION:
-                end -= 1
-                date_text = date_text[:-1]
-            day = re.sub(r"(?i)(st|nd|rd|th)$", "", day_raw)
-            month_num = _MONTHS.get(month_name.lower(), "00")
-            normalized, components = _normalize(year, month_num, day)
-            attrs = {"format": "month_name_dmY", "normalized": normalized}
-            if components:
-                attrs["components"] = components
-            spans.append(
-                EntitySpan(
-                    start,
-                    end,
-                    date_text,
-                    EntityLabel.DATE_GENERIC,
-                    "date_generic",
-                    self._confidence_named,
-                    attrs,
-                )
-            )
-
-        for match in _ISO_RE.finditer(text):
+        for match in ISO_RX.finditer(text):
             year, month, day = match.groups()
             start, end = match.span()
+            end = rtrim_index(text, end)
             date_text = text[start:end]
-            while date_text and date_text[-1] in TRAILING_PUNCTUATION:
-                end -= 1
-                date_text = date_text[:-1]
             normalized, components = _normalize(year, month, day)
             attrs = {"format": "iso", "normalized": normalized}
             if components:
@@ -198,13 +178,11 @@ class DateGenericDetector:
                 )
             )
 
-        for match in _NUMERIC_RE.finditer(text):
+        for match in MDY_RX.finditer(text):
             month, day, year = match.groups()
             start, end = match.span()
+            end = rtrim_index(text, end)
             date_text = text[start:end]
-            while date_text and date_text[-1] in TRAILING_PUNCTUATION:
-                end -= 1
-                date_text = date_text[:-1]
             normalized, components = _normalize(year, month, day)
             attrs = {"format": "mdY_numeric", "normalized": normalized}
             if components:
