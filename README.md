@@ -2,7 +2,7 @@
   <img src="banner.png" alt="Freedact Project Banner" />
 </p>
 
-Privacy‑first redaction for legal documents, built for safe LLM use. It detects sensitive entities, generates deterministic shape‑preserving pseudonyms, applies replacements safely, verifies there’s no residual PII, and produces auditable artifacts — all locally by default.
+Freedact automatically replaces private details in documents with consistent, realistic pseudonyms. The result is a version you can share with cloud-based AI tools or other online services without revealing the original sensitive information.
 
 ---
 
