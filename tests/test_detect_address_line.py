@@ -4,6 +4,8 @@ from typing import cast
 
 import pytest
 
+pytest.importorskip("usaddress", reason="addresses extra not installed")
+
 from redactor.detect.address_libpostal import AddressLineDetector
 from redactor.detect.base import EntityLabel, EntitySpan
 

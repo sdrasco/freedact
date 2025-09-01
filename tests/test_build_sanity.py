@@ -8,16 +8,13 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+pytest.importorskip("build", reason="'build' extra not installed")
+
 ROOT = Path(__file__).resolve().parents[1]
 with (ROOT / "pyproject.toml").open("rb") as f:
     pyproject = tomllib.load(f)
 project_name = pyproject["project"]["name"]
 has_readme = "readme" in pyproject["project"]
-
-try:  # pragma: no cover - import guard
-    import build  # type: ignore[import-not-found]  # noqa: F401
-except Exception:  # pragma: no cover - module not installed
-    pytest.skip("build package is required for this test", allow_module_level=True)
 
 
 def test_build_sanity() -> None:
