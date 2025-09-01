@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, List, cast
 
-from stdnum import iban, iso9362, luhn
+from stdnum import bic, iban, luhn
 from stdnum.us import ein as us_ein
 from stdnum.us import ssn as us_ssn
 
@@ -59,7 +59,7 @@ GENERIC_HINT_RX: re.Pattern[str] = re.compile(
 )
 
 # Keyword context for routing numbers -------------------------------------------------------
-_ROUTING_KEYWORDS = ("routing", "aba", "rt#", "rtn", "fedwire")
+_ROUTING_KEYWORDS = ("routing", "aba")
 
 # Card scheme prefixes ---------------------------------------------------------------------
 _SCHEME_PATTERNS = {
@@ -163,7 +163,7 @@ class AccountIdDetector:
                 continue
             end, raw = _trim(text, start, end)
             candidate = raw.upper()
-            if not iso9362.is_valid(candidate) or candidate.isalpha():  # type: ignore[attr-defined]
+            if not bic.is_valid(candidate):
                 continue
             attrs = {
                 "subtype": "swift_bic",
@@ -187,11 +187,8 @@ class AccountIdDetector:
         for match in ABA_RX.finditer(text):
             start, end = match.span(1)
             line_start = text.rfind("\n", 0, start) + 1
-            line_end = text.find("\n", end)
-            if line_end == -1:
-                line_end = len(text)
-            line_text = text[line_start:line_end].lower()
-            if not any(keyword in line_text for keyword in _ROUTING_KEYWORDS):
+            context_snippet = text[max(line_start, start - 40) : start].lower()
+            if not any(keyword in context_snippet for keyword in _ROUTING_KEYWORDS):
                 continue
             end, raw = _trim(text, start, end)
             if not _is_valid_routing(raw):

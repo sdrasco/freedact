@@ -134,6 +134,14 @@ def scan_text(
     total_found = len(spans)
 
     repl_multiset = build_replacement_multiset_by_label(applied_plan)
+    block_lines: set[str] = set()
+    if applied_plan:
+        for pe in applied_plan:
+            if pe.label is EntityLabel.ADDRESS_BLOCK:
+                for line in pe.replacement.splitlines():
+                    stripped = line.rstrip()
+                    if stripped:
+                        block_lines.add(stripped)
     residual: list[VerificationFinding] = []
     ignored: list[VerificationFinding] = []
 
@@ -151,6 +159,16 @@ def scan_text(
         if counter and counter[f.text] > 0:
             counter[f.text] -= 1
             reason = "replacement_match"
+        elif label is EntityLabel.ADDRESS_BLOCK and f.text.strip() in block_lines:
+            reason = "replacement_match_block_line"
+        elif label in {EntityLabel.GPE, EntityLabel.LOC}:
+            line_start = text.rfind("\n", 0, f.start) + 1
+            line_end = text.find("\n", f.end)
+            if line_end == -1:
+                line_end = len(text)
+            line_text = text[line_start:line_end].strip()
+            if line_text in block_lines:
+                reason = "in_address_block_replacement"
         elif label is EntityLabel.EMAIL:
             domain = f.attrs.get("domain")
             if isinstance(domain, str) and is_safe_email_domain(domain):

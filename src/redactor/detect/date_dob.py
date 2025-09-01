@@ -82,9 +82,10 @@ class DOBDetector:
         """Detect DOB mentions in ``text``."""
 
         _ = context
-        candidates = self._date_detector.detect(text, context)
+        candidates = sorted(self._date_detector.detect(text, context), key=lambda s: s.start)
         line_index: LineIndex = build_line_index(text)
         spans: list[EntitySpan] = []
+        seen_by_line: dict[int, list[int]] = {}
 
         for span in candidates:
             normalized = cast(str | None, span.attrs.get("normalized"))
@@ -98,29 +99,55 @@ class DOBDetector:
             segment = line_text[last_period + 1 :] if last_period != -1 else line_text
             segment = segment.rstrip()
             trigger: str | None = None
+            trigger_pos: int | None = None
             line_scope = "same_line"
 
             for pattern, name in _DOB_PATTERNS:
-                if pattern.search(segment):
+                m = pattern.search(segment)
+                if m:
                     trigger = name
+                    offset = last_period + 1 if last_period != -1 else 0
+                    trigger_pos = line_start + offset + m.start()
                     break
 
-            if not trigger and _BORN_PATTERN.search(segment):
-                trigger = "born"
+            if not trigger:
+                m = _BORN_PATTERN.search(segment)
+                if m:
+                    trigger = "born"
+                    offset = last_period + 1 if last_period != -1 else 0
+                    trigger_pos = line_start + offset + m.start()
 
             if not trigger and line_no > 0:
                 prev_start, prev_end, _ = line_index[line_no - 1]
                 prev_segment = text[prev_start:prev_end].rstrip()
                 for pattern, name in _DOB_PATTERNS:
-                    if pattern.search(prev_segment):
+                    m = pattern.search(prev_segment)
+                    if m:
                         trigger = name
+                        trigger_pos = prev_start + m.start()
                         line_scope = "prev_line"
                         break
-                if not trigger and _BORN_PATTERN.search(prev_segment):
-                    trigger = "born"
-                    line_scope = "prev_line"
+                if not trigger:
+                    m = _BORN_PATTERN.search(prev_segment)
+                    if m:
+                        trigger = "born"
+                        trigger_pos = prev_start + m.start()
+                        line_scope = "prev_line"
 
+            line_seen = seen_by_line.setdefault(line_no, [])
             if not trigger:
+                line_seen.append(span.start)
+                continue
+
+            skip = False
+            if line_scope == "same_line" and trigger_pos is not None:
+                if any(s >= trigger_pos for s in line_seen):
+                    skip = True
+            elif line_scope == "prev_line":
+                if line_seen:
+                    skip = True
+            if skip:
+                line_seen.append(span.start)
                 continue
 
             confidence = self._confidence_explicit if trigger != "born" else self._confidence_born
@@ -142,6 +169,7 @@ class DOBDetector:
                     attrs,
                 )
             )
+            line_seen.append(span.start)
 
         spans.sort(key=lambda s: s.start)
         return spans
