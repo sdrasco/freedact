@@ -46,7 +46,10 @@ def _run_cli(
     if extra:
         cmd.extend(extra)
     runner = CliRunner()
-    result = runner.invoke(app, cmd, env=env)
+    env_vars = {"REDACTOR_SEED_SECRET": "unit-test-secret", "PYTHONPATH": "src:."}
+    if env:
+        env_vars.update(env)
+    result = runner.invoke(app, cmd, env=env_vars)
     return result.exit_code, out_txt, report_dir
 
 
@@ -127,6 +130,35 @@ def test_strict_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
     code, out_txt, rep = _run_cli(tmp_path, text)
     assert code == 6
     verification = json.loads((rep / "verification.json").read_text())
+    assert verification["residual_count"] == 1
+
+
+def test_non_strict_residual(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def stub(text: str, cfg: ConfigModel, context: DetectionContext) -> list[EntitySpan]:
+        spans = _run_detectors(text, cfg, context)
+        return [sp for sp in spans if sp.label is not EntityLabel.EMAIL]
+
+    monkeypatch.setattr("redactor.cli._run_detectors", stub)
+    in_txt = tmp_path / "in.txt"
+    in_txt.write_text("Email: user@acme.com\n", encoding="utf-8")
+    out_txt = tmp_path / "out.txt"
+    report_dir = tmp_path / "report"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--in",
+            str(in_txt),
+            "--out",
+            str(out_txt),
+            "--report",
+            str(report_dir),
+            "--no-strict",
+        ],
+    )
+    assert result.exit_code == 0
+    verification = json.loads((report_dir / "verification.json").read_text())
     assert verification["residual_count"] == 1
 
 
