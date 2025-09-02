@@ -1,0 +1,86 @@
+"""Small static corpora for address generation."""
+
+from __future__ import annotations
+
+STREET_TYPES = ["St", "Ave", "Rd", "Blvd", "Ln"]
+
+STREET_NAMES = [
+    "Oak",
+    "Maple",
+    "Pine",
+    "Cedar",
+    "Elm",
+    "Walnut",
+    "Willow",
+    "Birch",
+    "Chestnut",
+    "Ash",
+]
+
+CITIES = [
+    "Springfield",
+    "Fairview",
+    "Riverton",
+    "Greenville",
+    "Madison",
+    "Georgetown",
+    "Clinton",
+    "Bristol",
+    "Dayton",
+    "Kingston",
+]
+
+STATE_ABBRS = [
+    "AL",
+    "AK",
+    "AZ",
+    "AR",
+    "CA",
+    "CO",
+    "CT",
+    "DE",
+    "FL",
+    "GA",
+    "HI",
+    "IA",
+    "ID",
+    "IL",
+    "IN",
+    "KS",
+    "KY",
+    "LA",
+    "MA",
+    "MD",
+    "ME",
+    "MI",
+    "MN",
+    "MO",
+    "MS",
+    "MT",
+    "NC",
+    "ND",
+    "NE",
+    "NH",
+    "NJ",
+    "NM",
+    "NV",
+    "NY",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VA",
+    "VT",
+    "WA",
+    "WI",
+    "WV",
+    "WY",
+]
+
+__all__ = ["STREET_TYPES", "STREET_NAMES", "CITIES", "STATE_ABBRS"]

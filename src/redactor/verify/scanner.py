@@ -139,7 +139,7 @@ def scan_text(
         for pe in applied_plan:
             if pe.label is EntityLabel.ADDRESS_BLOCK:
                 for line in pe.replacement.splitlines():
-                    stripped = line.strip()
+                    stripped = line.rstrip()
                     if stripped:
                         block_lines.add(stripped)
     residual: list[VerificationFinding] = []
@@ -159,14 +159,14 @@ def scan_text(
         if counter and counter[f.text] > 0:
             counter[f.text] -= 1
             reason = "replacement_match"
-        elif label is EntityLabel.ADDRESS_BLOCK and f.text.strip() in block_lines:
+        elif label is EntityLabel.ADDRESS_BLOCK and f.text.rstrip() in block_lines:
             reason = "replacement_match_block_line"
         elif label in {EntityLabel.GPE, EntityLabel.LOC}:
             line_start = text.rfind("\n", 0, f.start) + 1
             line_end = text.find("\n", f.end)
             if line_end == -1:
                 line_end = len(text)
-            line_text = text[line_start:line_end].strip()
+            line_text = text[line_start:line_end].rstrip()
             if line_text in block_lines:
                 reason = "in_address_block_replacement"
         elif label is EntityLabel.EMAIL:

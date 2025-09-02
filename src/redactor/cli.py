@@ -37,8 +37,7 @@ from .config import ConfigModel, load_config
 from .detect.base import DetectionContext, Detector, EntityLabel, EntitySpan
 from .filters import filter_spans_for_safety, find_heading_ranges
 from .io import read_file, write_file
-from .link import alias_resolver, coref, span_merger
-from .preprocess import layout_reconstructor
+from .link import address_merge, alias_resolver, coref, span_merger
 from .preprocess.normalizer import normalize
 from .pseudo.seed import ensure_secret_present
 from .replace.applier import apply_plan
@@ -279,11 +278,14 @@ def run(  # noqa: PLR0913
             typer.echo(f"Detected {len(spans)} spans in {t_det.ms:.1f} ms", err=True)
 
         with Timing() as t_addr:
-            spans = layout_reconstructor.merge_address_lines_into_blocks(normalized, spans)
+            addr_lines = [sp for sp in spans if sp.label is EntityLabel.ADDRESS_BLOCK]
+            merged_addr = address_merge.merge_address_lines_into_blocks(normalized, addr_lines)
+            other_spans = [sp for sp in spans if sp.label is not EntityLabel.ADDRESS_BLOCK]
+            spans = other_spans + merged_addr
         if verbose:
             typer.echo(f"Address merge in {t_addr.ms:.1f} ms", err=True)
 
-        address_blocks = [sp for sp in spans if sp.label is EntityLabel.ADDRESS_BLOCK]
+        address_blocks = [sp for sp in merged_addr if sp.source == "address_block_merge"]
         heading_ranges = find_heading_ranges(normalized)
         spans = filter_spans_for_safety(
             spans,
