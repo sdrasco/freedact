@@ -16,14 +16,15 @@ different value is produced.
 
 from __future__ import annotations
 
-import calendar
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Callable, cast
 
 from redactor.config import ConfigModel
 from redactor.detect.base import EntityLabel, EntitySpan
 from redactor.pseudo import PseudonymGenerator, case_preserver, number_rules
+from redactor.utils import datefmt
 from redactor.utils.textspan import ensure_non_overlapping
 
 __all__ = ["PlanEntry", "build_replacement_plan"]
@@ -54,17 +55,18 @@ def _ensure_diff(original: str, key: str, builder: Callable[[str], str]) -> str:
 
 def _generate_fake_date_like(
     source_text: str,
-    attrs: dict[str, object],
     *,
     key: str,
     gen: PseudonymGenerator,
 ) -> str:
     """Return a deterministic fake date mirroring ``source_text`` style."""
 
-    fmt = cast(str | None, attrs.get("format"))
-    normalized = cast(str | None, attrs.get("normalized"))
+    parsed = datefmt.parse_like(source_text)
+    if not parsed:
+        return source_text
+    original_date, style = parsed
 
-    def draw(rng_key: str) -> tuple[int, int, int, str]:
+    def draw(rng_key: str) -> date:
         rng = gen.rng("DOB", rng_key)
         year = rng.randint(1930, 2005)
         month = rng.randint(1, 12)
@@ -76,30 +78,15 @@ def _generate_fake_date_like(
         else:
             max_day = 30
         day = rng.randint(1, max_day)
-        return year, month, day, f"{year:04d}-{month:02d}-{day:02d}"
+        return date(year, month, day)
 
-    year, month, day, norm = draw(key)
-    if normalized:
-        for salt in (":1", ":2"):
-            if norm != normalized:
-                break
-            year, month, day, norm = draw(f"{key}{salt}")
+    new_date = draw(key)
+    for salt in (":1", ":2"):
+        if new_date != original_date:
+            break
+        new_date = draw(f"{key}{salt}")
 
-    if fmt == "month_name_mdY":
-        month_str = calendar.month_name[month]
-        return f"{month_str} {day}, {year}"
-    if fmt == "month_name_dmY":
-        month_str = calendar.month_name[month]
-        return f"{day} {month_str} {year}"
-    if fmt == "mdY_numeric":
-        m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", source_text)
-        if m:
-            month_fmt = f"{month:0{len(m.group(1))}d}"
-            day_fmt = f"{day:0{len(m.group(2))}d}"
-            return f"{month_fmt}/{day_fmt}/{year:04d}"
-        return f"{month}/{day}/{year}"
-    # default ISO format
-    return norm
+    return datefmt.format_like(new_date, style)
 
 
 def _normalize_digits(text: str) -> str:
@@ -247,7 +234,6 @@ def _ensure_safe_replacement(
                 return candidate
             candidate = _generate_fake_date_like(
                 source,
-                {"normalized": _normalize_digits(source)},
                 key=f"{key}:{attempt + 1}",
                 gen=gen,
             )
@@ -276,6 +262,7 @@ def build_replacement_plan(
 
         replacement: str | None = None
         label = sp.label
+        skip_flag = False
 
         if label is EntityLabel.PERSON:
             key = sp.entity_id or sp.text
@@ -405,20 +392,22 @@ def build_replacement_plan(
                 )
         elif label is EntityLabel.DOB:
             key = sp.entity_id or cast(str | None, sp.attrs.get("normalized")) or sp.text
-            replacement = _generate_fake_date_like(sp.text, sp.attrs, key=key, gen=gen)
+            replacement = _generate_fake_date_like(sp.text, key=key, gen=gen)
             replacement = _ensure_safe_replacement(
                 EntityLabel.DOB, sp.text, replacement, key=key, gen=gen
             )
         elif label is EntityLabel.DATE_GENERIC:
             if cfg.redact.generic_dates:
                 key = sp.entity_id or cast(str | None, sp.attrs.get("normalized")) or sp.text
-                replacement = _generate_fake_date_like(sp.text, sp.attrs, key=key, gen=gen)
+                replacement = _generate_fake_date_like(sp.text, key=key, gen=gen)
         elif label is EntityLabel.ALIAS_LABEL:
             alias_kind = cast(str | None, sp.attrs.get("alias_kind"))
             cluster_id = cast(str | None, sp.attrs.get("cluster_id")) or sp.entity_id
+            skip_alias = False
             if alias_kind == "role":
                 if cfg.redact.alias_labels == "keep_roles":
-                    replacement = None
+                    replacement = sp.text
+                    skip_alias = True
                 else:
 
                     def build_role(k: str, text: str = sp.text) -> str:
@@ -436,6 +425,7 @@ def build_replacement_plan(
                     return case_preserver.format_like(text, first)
 
                 replacement = _ensure_diff(sp.text, key, build_nick)
+            skip_flag = skip_alias
         else:
             replacement = None
 
@@ -449,7 +439,7 @@ def build_replacement_plan(
             "span_id": sp.span_id,
             "subtype": sp.attrs.get("subtype"),
             "source_label_text": sp.text,
-            "skip_replacement": False,
+            "skip_replacement": skip_flag,
         }
         if label is EntityLabel.ALIAS_LABEL:
             meta["alias_kind"] = sp.attrs.get("alias_kind")

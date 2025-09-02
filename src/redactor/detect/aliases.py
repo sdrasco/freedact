@@ -85,7 +85,7 @@ RX_HEREINAFTER_WITH_SUBJ: re.Pattern[str] = re.compile(
 
 RX_HEREINAFTER_ALIAS_ONLY: re.Pattern[str] = re.compile(
     rf"""
-    (?P<trigger>hereinafter|hereafter)\s+
+    (?P<trigger>hereinafter|hereafter|a/?k/?a|aka|f/?k/?a|fka|d/?b/?a|dba)\s+
     (?:referred\s+to\s+as\s+)?
     (?P<q1>[{QUOTE_CLASS}])(?P<alias>[^{QUOTE_CLASS}]+?)(?P<q2>[{QUOTE_CLASS}])
     """,
@@ -140,13 +140,16 @@ def _guess_subject(
     except ValueError:
         return None, None
     prev = line_no - 1
-    while prev >= 0:
+    checked = 0
+    while prev >= 0 and checked < 2:
         l_start, l_end, _ = line_index[prev]
         candidate = text[l_start:l_end].strip()
-        if candidate and _looks_like_subject(candidate):
-            # TODO(M7-T2): prefer name-like candidates using
-            # ``is_probable_person_name`` from ``names_person``.
-            return candidate, prev
+        if candidate:
+            checked += 1
+            if _looks_like_subject(candidate):
+                # TODO(M7-T2): prefer name-like candidates using
+                # ``is_probable_person_name`` from ``names_person``.
+                return candidate, prev
         prev -= 1
     return None, None
 

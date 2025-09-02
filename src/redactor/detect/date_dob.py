@@ -1,65 +1,43 @@
-"""Contextual date-of-birth detector.
+"""Explicit date-of-birth detector.
 
-This detector promotes generic date spans to :class:`~redactor.detect.base.EntityLabel.DOB`
-when explicit lexical cues suggest the date refers to a person's birth.  It
-reuses :class:`DateGenericDetector` to obtain candidate dates and then searches
-for triggers such as ``DOB``, ``Date of Birth`` or ``born`` on the same line or
-immediately preceding line.  Only dates that normalise successfully to
-``YYYY-MM-DD`` are eligible.
-
-Confidence is ``0.99`` for explicit ``DOB``/``Date of Birth``/``birthdate``
-triggers and ``0.98`` when relying solely on ``born``.  The resulting span
-shares the exact boundaries of the underlying date and carries through the
-``normalized`` and ``components`` attributes from the generic detector while
-adding ``trigger`` and ``line_scope`` metadata.
+This detector searches for lexical triggers such as ``DOB`` or ``Date of Birth``
+followed by a date on the same line (or the immediately following line).
+Only the first date token to the right of a trigger is captured and the
+resulting span preserves the original date text without including the trigger.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple, cast
 
-from redactor.preprocess.layout_reconstructor import (
-    LineIndex,
-    build_line_index,
-    find_line_for_char,
-)
+from redactor.preprocess.layout_reconstructor import build_line_index
+from redactor.utils.datefmt import parse_like
 
 from .base import DetectionContext, EntityLabel, EntitySpan
-from .date_generic import DateGenericDetector
 
 __all__ = ["DOBDetector", "get_detector"]
 
 # ---------------------------------------------------------------------------
-# Trigger patterns
+# Patterns
 # ---------------------------------------------------------------------------
 
-_SEP_CLASS = ":-–—"
-_DOB_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+_TRIGGERS: list[tuple[re.Pattern[str], str, bool]] = [
+    (re.compile(r"\bD(?:\.\s*O\.\s*B|OB)\.?", re.IGNORECASE), "dob", True),
+    (re.compile(r"\bdate\s+of\s+birth\b", re.IGNORECASE), "date_of_birth", True),
     (
-        re.compile(
-            rf"\bD(?:\.\s*O\.\s*B|OB)\.?\b(?:\s{{0,2}}[{_SEP_CLASS}]\s{{0,2}})?$",
-            re.IGNORECASE,
-        ),
-        "dob",
-    ),
-    (
-        re.compile(
-            rf"\bdate\s+of\s+birth\b(?:\s{{0,2}}[{_SEP_CLASS}]\s{{0,2}})?$",
-            re.IGNORECASE,
-        ),
-        "date_of_birth",
-    ),
-    (
-        re.compile(
-            rf"(?:\bbirth\s*date\b|\bbirthdate\b)(?:\s{{0,2}}[{_SEP_CLASS}]\s{{0,2}})?$",
-            re.IGNORECASE,
-        ),
+        re.compile(r"\bbirth\s*date\b|\bbirthdate\b", re.IGNORECASE),
         "birthdate",
+        True,
     ),
+    (re.compile(r"\bborn\b", re.IGNORECASE), "born", False),
 ]
 
-_BORN_PATTERN = re.compile(r"\bborn\b", re.IGNORECASE)
+_SEP_AFTER = re.compile(r"\s{0,2}[:\-–—]\s{0,2}")
+_BORN_SKIP = re.compile(r"\s{0,2}(?:on\s+)?")
+
+_MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
+_RX_NUMERIC = re.compile(r"\d{1,2}/\d{1,2}/\d{4}")
+_RX_MONTH = re.compile(rf"(?:{_MONTHS})\s+\d{{1,2}},\s*\d{{4}}", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
 # Detector implementation
@@ -67,110 +45,69 @@ _BORN_PATTERN = re.compile(r"\bborn\b", re.IGNORECASE)
 
 
 class DOBDetector:
-    """Classify dates of birth based on context."""
+    """Detect DOB mentions based on explicit triggers."""
 
-    _confidence_explicit: float = 0.99
-    _confidence_born: float = 0.98
-
-    def __init__(self) -> None:
-        self._date_detector = DateGenericDetector()
+    _confidence: float = 0.99
 
     def name(self) -> str:  # pragma: no cover - trivial
         return "date_dob"
 
     def detect(self, text: str, context: DetectionContext | None = None) -> list[EntitySpan]:
-        """Detect DOB mentions in ``text``."""
-
         _ = context
-        candidates = sorted(self._date_detector.detect(text, context), key=lambda s: s.start)
-        line_index: LineIndex = build_line_index(text)
+        line_index = build_line_index(text)
         spans: list[EntitySpan] = []
-        seen_by_line: dict[int, list[int]] = {}
 
-        for span in candidates:
-            normalized = cast(str | None, span.attrs.get("normalized"))
-            if not normalized:
-                continue
-            components = cast(dict[str, str] | None, span.attrs.get("components"))
-            line_no = find_line_for_char(span.start, line_index)
-            line_start, _, _ = line_index[line_no]
-            line_text = text[line_start : span.start]
-            last_period = line_text.rfind(".")
-            segment = line_text[last_period + 1 :] if last_period != -1 else line_text
-            segment = segment.rstrip()
-            trigger: str | None = None
-            trigger_pos: int | None = None
-            line_scope = "same_line"
-
-            for pattern, name in _DOB_PATTERNS:
-                m = pattern.search(segment)
-                if m:
-                    trigger = name
-                    offset = last_period + 1 if last_period != -1 else 0
-                    trigger_pos = line_start + offset + m.start()
+        for idx, (l_start, l_end, _) in enumerate(line_index):
+            line = text[l_start:l_end]
+            for rx, trig_name, need_sep in _TRIGGERS:
+                for m in rx.finditer(line):
+                    after = line[m.end() :]
+                    sep_match = _BORN_SKIP.match(after) if not need_sep else _SEP_AFTER.match(after)
+                    if not sep_match:
+                        continue
+                    remainder = after[sep_match.end() :]
+                    scope = "same_line"
+                    if not remainder.strip() and idx + 1 < len(line_index):
+                        n_start, n_end, _ = line_index[idx + 1]
+                        remainder = text[n_start:n_end]
+                        scope = "prev_line"
+                        search_start = n_start
+                    else:
+                        search_start = l_start + m.end() + sep_match.end()
+                    period = remainder.find(".")
+                    segment = remainder[:period] if period != -1 else remainder
+                    m_num = _RX_NUMERIC.search(segment)
+                    m_mon = _RX_MONTH.search(segment)
+                    cand = None
+                    if m_num and m_mon:
+                        cand = m_num if m_num.start() < m_mon.start() else m_mon
+                    else:
+                        cand = m_num or m_mon
+                    if not cand:
+                        continue
+                    date_text = cand.group().strip()
+                    parsed = parse_like(date_text)
+                    if not parsed:
+                        continue
+                    start = search_start + cand.start()
+                    end = start + len(date_text)
+                    attrs: dict[str, object] = {
+                        "normalized": parsed[0].isoformat(),
+                        "trigger": trig_name,
+                        "line_scope": scope,
+                    }
+                    spans.append(
+                        EntitySpan(
+                            start,
+                            end,
+                            date_text,
+                            EntityLabel.DOB,
+                            "date_dob",
+                            self._confidence,
+                            attrs,
+                        )
+                    )
                     break
-
-            if not trigger:
-                m = _BORN_PATTERN.search(segment)
-                if m:
-                    trigger = "born"
-                    offset = last_period + 1 if last_period != -1 else 0
-                    trigger_pos = line_start + offset + m.start()
-
-            if not trigger and line_no > 0:
-                prev_start, prev_end, _ = line_index[line_no - 1]
-                prev_segment = text[prev_start:prev_end].rstrip()
-                for pattern, name in _DOB_PATTERNS:
-                    m = pattern.search(prev_segment)
-                    if m:
-                        trigger = name
-                        trigger_pos = prev_start + m.start()
-                        line_scope = "prev_line"
-                        break
-                if not trigger:
-                    m = _BORN_PATTERN.search(prev_segment)
-                    if m:
-                        trigger = "born"
-                        trigger_pos = prev_start + m.start()
-                        line_scope = "prev_line"
-
-            line_seen = seen_by_line.setdefault(line_no, [])
-            if not trigger:
-                line_seen.append(span.start)
-                continue
-
-            skip = False
-            if line_scope == "same_line" and trigger_pos is not None:
-                if any(s >= trigger_pos for s in line_seen):
-                    skip = True
-            elif line_scope == "prev_line":
-                if line_seen:
-                    skip = True
-            if skip:
-                line_seen.append(span.start)
-                continue
-
-            confidence = self._confidence_explicit if trigger != "born" else self._confidence_born
-
-            attrs: Dict[str, object] = {
-                "normalized": normalized,
-                "components": components,
-                "trigger": trigger,
-                "line_scope": line_scope,
-            }
-            spans.append(
-                EntitySpan(
-                    span.start,
-                    span.end,
-                    span.text,
-                    EntityLabel.DOB,
-                    "date_dob",
-                    confidence,
-                    attrs,
-                )
-            )
-            line_seen.append(span.start)
-
         spans.sort(key=lambda s: s.start)
         return spans
 

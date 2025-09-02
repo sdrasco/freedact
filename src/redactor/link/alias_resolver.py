@@ -77,8 +77,8 @@ def _find_subject_for_def(
     spans: List[EntitySpan],
     text: str,
     line_index: LineIndex | None = None,
-) -> Tuple[str | None, SpanRange | None, str]:
-    """Determine subject text, span and entity type for an alias definition."""
+) -> Tuple[str | None, SpanRange | None, str, str | None]:
+    """Determine subject information for an alias definition."""
 
     if line_index is None:
         line_index = build_line_index(text)
@@ -91,6 +91,7 @@ def _find_subject_for_def(
             int(subject_span_dict["end"]),
         )
         entity_type = "unknown"
+        existing_id: str | None = None
         for sp in spans:
             if (
                 sp.start < span_tuple[1]
@@ -103,8 +104,9 @@ def _find_subject_for_def(
                 }
             ):
                 entity_type = _entity_type_from_label(sp.label)
+                existing_id = sp.entity_id
                 break
-        return subject_text_attr, span_tuple, entity_type
+        return subject_text_attr, span_tuple, entity_type, existing_id
 
     # search for nearest PERSON/ORG/BANK_ORG span
     def_line = find_line_for_char(def_span.start, line_index)
@@ -122,12 +124,25 @@ def _find_subject_for_def(
     if best is not None:
         sp = best[1]
         entity_type = _entity_type_from_label(sp.label)
-        return text[sp.start : sp.end], (sp.start, sp.end), entity_type
+        return text[sp.start : sp.end], (sp.start, sp.end), entity_type, sp.entity_id
 
     subject_guess = cast(str | None, def_span.attrs.get("subject_guess"))
+    guess_line = cast(int | None, def_span.attrs.get("subject_guess_line"))
     if subject_guess:
-        return subject_guess, None, "unknown"
-    return None, None, "unknown"
+        if guess_line is not None and 0 <= guess_line < len(line_index):
+            g_start, g_end, _ = line_index[guess_line]
+            for sp in spans:
+                if sp.label not in {
+                    EntityLabel.PERSON,
+                    EntityLabel.ORG,
+                    EntityLabel.BANK_ORG,
+                }:
+                    continue
+                if sp.start < g_end and sp.end > g_start:
+                    entity_type = _entity_type_from_label(sp.label)
+                    return text[sp.start : sp.end], (sp.start, sp.end), entity_type, sp.entity_id
+        return subject_guess, None, "unknown", None
+    return None, None, "unknown", None
 
 
 def _cluster_id_for(subject_key: str, text: str, cfg: ConfigModel) -> str:
@@ -250,7 +265,8 @@ def _assign_entity_id_to_subject_spans(
         }:
             continue
         if sp.start < subj_end and sp.end > subj_start:
-            spans[i] = replace(sp, entity_id=cluster_id)
+            if sp.entity_id is None:
+                spans[i] = replace(sp, entity_id=cluster_id)
 
 
 def _occupied_ranges(spans: Iterable[EntitySpan]) -> List[SpanRange]:
@@ -312,11 +328,11 @@ def resolve_aliases(
     for def_sp in sorted(alias_defs, key=lambda s: s.start):
         alias = cast(str, def_sp.attrs.get("alias", def_sp.text))
         is_role = bool(def_sp.attrs.get("role_flag", False))
-        subject_text, subject_span, entity_type = _find_subject_for_def(
+        subject_text, subject_span, entity_type, existing_id = _find_subject_for_def(
             def_sp, spans, text, line_index
         )
         subject_key = subject_text if subject_text is not None else alias
-        cluster_id = _cluster_id_for(subject_key, text, cfg)
+        cluster_id = existing_id or _cluster_id_for(subject_key, text, cfg)
         def_infos.append(
             _DefInfo(
                 span=def_sp,
