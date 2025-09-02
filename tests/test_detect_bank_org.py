@@ -15,6 +15,9 @@ def test_true_positive_bank_na(det: BankOrgDetector) -> None:
     assert len(spans) == 1
     span = spans[0]
     assert span.text == "Chase Bank, N.A."
+    start = text.index("Chase Bank, N.A.")
+    assert span.start == start
+    assert span.end == start + len("Chase Bank, N.A.")
     assert span.label is EntityLabel.BANK_ORG
     assert span.attrs["kind"] == "bank"
     assert span.attrs["suffix"] in {"na", "national_association"}
@@ -75,6 +78,10 @@ def test_trimming_parentheses(det: BankOrgDetector) -> None:
     text = "(Bank of Anywhere, N.A.),"
     spans = det.detect(text)
     assert spans and spans[0].text == "Bank of Anywhere, N.A."
+    span = spans[0]
+    start = text.index("Bank of Anywhere, N.A.")
+    assert span.start == start
+    assert span.end == start + len("Bank of Anywhere, N.A.")
 
 
 def test_trimming_quotes(det: BankOrgDetector) -> None:

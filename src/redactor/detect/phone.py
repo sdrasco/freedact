@@ -119,7 +119,8 @@ class PhoneDetector:
     def detect(self, text: str, context: DetectionContext | None = None) -> list[EntitySpan]:
         """Detect phone numbers in ``text``."""
 
-        region = normalize_region(context.locale if context else "US") or "US"
+        locale = context.locale if context else None
+        region = normalize_region(locale) or "US"
         matcher = PhoneNumberMatcher(text, region, leniency=self._leniency)
 
         spans: list[EntitySpan] = []
@@ -128,7 +129,8 @@ class PhoneDetector:
             matched_text = text[start:end]
 
             # Skip obvious overlaps or legal section references.
-            if "@" in matched_text:
+            window = text[max(0, start - 1) : min(len(text), end + 1)]
+            if "@" in window:
                 continue
             if "§" in matched_text or "§" in text[max(0, start - 2) : start]:
                 continue

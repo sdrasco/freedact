@@ -96,6 +96,13 @@ def test_offsets_and_dedup(det: PhoneDetector) -> None:
     assert len(starts) == 2
 
 
+def test_skips_email_overlap(det: PhoneDetector) -> None:
+    text = "Contact us at 415-555-0000 or 4155550000@example.com"
+    spans = det.detect(text)
+    assert len(spans) == 1
+    assert spans[0].text == "415-555-0000"
+
+
 def test_region_behavior(det: PhoneDetector) -> None:
     text = "Call 020 7946 0958"
     us_spans = det.detect(text, DetectionContext(locale="US"))

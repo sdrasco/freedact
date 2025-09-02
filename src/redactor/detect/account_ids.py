@@ -34,7 +34,7 @@ try:
 except Exception:  # pragma: no cover - missing module
     routing_number = cast(Any, None)
 
-from ..utils.constants import rtrim_index
+from ..utils.constants import RIGHT_TRIM
 from .base import DetectionContext, EntityLabel, EntitySpan
 
 __all__ = ["AccountIdDetector", "get_detector"]
@@ -52,14 +52,14 @@ SSN_RX: re.Pattern[str] = re.compile(r"\b(\d{3}-\d{2}-\d{4}|\d{9})\b")
 EIN_RX: re.Pattern[str] = re.compile(r"\b(\d{2}-\d{7})\b")
 GENERIC_HINT_RX: re.Pattern[str] = re.compile(
     (
-        r"\b(?:[A-Za-z]?(?:acct|account|a/c|iban|iban:|iban#|acct#|account#|sort\scode)"
+        r"\b(?:[A-Za-z]?(?:acct|account|a/c|iban|iban:|iban#|acct#|account#|sort\scode|ref|reference)"
         r"[:\s#]+([A-Za-z0-9][A-Za-z0-9 -]{4,}))"
     ),
     re.IGNORECASE,
 )
 
 # Keyword context for routing numbers -------------------------------------------------------
-_ROUTING_KEYWORDS = ("routing", "aba")
+_ROUTING_KEYWORDS = ("routing number", "routing", "aba")
 
 # Card scheme prefixes ---------------------------------------------------------------------
 _SCHEME_PATTERNS = {
@@ -92,7 +92,8 @@ class _Candidate:
 def _trim(text: str, start: int, end: int) -> tuple[int, str]:
     """Trim trailing punctuation and return new end and substring."""
 
-    end = rtrim_index(text, end)
+    if end > start and text[end - 1] in RIGHT_TRIM:
+        end -= 1
     return end, text[start:end]
 
 
@@ -315,7 +316,8 @@ class AccountIdDetector:
                 start, end = match.span(1)
                 end, raw = _trim(text, start, end)
                 compact = re.sub(r"[ -]", "", raw).upper()
-                if not (6 <= len(compact) <= 34) or not any(c.isdigit() for c in compact):
+                digit_count = sum(1 for c in compact if c.isdigit())
+                if digit_count < 6 or len(compact) > 34:
                     continue
                 attrs = {
                     "subtype": "generic",
