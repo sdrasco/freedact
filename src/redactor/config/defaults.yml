@@ -46,6 +46,13 @@ detectors:
     enabled: false
     backend: "auto"              # "auto" | "fastcoref" | "regex"
     require: false
+  account_ids:
+    generic:
+      enabled: true
+
+filters:
+  protect_headings: true
+  gpe_outside_addresses: true
 
 precedence:
   - ACCOUNT_ID

@@ -34,7 +34,8 @@ except Exception:  # pragma: no cover - missing rich
     _rich = None  # type: ignore[assignment]
 
 from .config import ConfigModel, load_config
-from .detect.base import DetectionContext, Detector, EntitySpan
+from .detect.base import DetectionContext, Detector, EntityLabel, EntitySpan
+from .filters import filter_spans_for_safety, find_heading_ranges
 from .io import read_file, write_file
 from .link import alias_resolver, coref, span_merger
 from .preprocess import layout_reconstructor
@@ -281,6 +282,16 @@ def run(  # noqa: PLR0913
             spans = layout_reconstructor.merge_address_lines_into_blocks(normalized, spans)
         if verbose:
             typer.echo(f"Address merge in {t_addr.ms:.1f} ms", err=True)
+
+        address_blocks = [sp for sp in spans if sp.label is EntityLabel.ADDRESS_BLOCK]
+        heading_ranges = find_heading_ranges(normalized)
+        spans = filter_spans_for_safety(
+            spans,
+            heading_ranges=heading_ranges,
+            address_blocks=address_blocks,
+            protect_headings=cfg.filters.protect_headings,
+            gpe_outside_addresses=cfg.filters.gpe_outside_addresses,
+        )
 
         with Timing() as t_alias:
             spans, clusters = alias_resolver.resolve_aliases(normalized, spans, cfg)

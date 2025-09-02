@@ -123,8 +123,17 @@ class AccountIdDetector:
 
     # ------------------------------------------------------------------
     def detect(self, text: str, context: DetectionContext | None = None) -> list[EntitySpan]:
-        _ = context
         candidates: List[_Candidate] = []
+
+        enable_generic = True
+        if context and context.config is not None:
+            try:
+                from redactor.config import ConfigModel  # local import to avoid cycle
+
+                cfg = cast(ConfigModel, context.config)
+                enable_generic = cfg.detectors.account_ids.generic.enabled
+            except Exception:
+                pass
 
         # IBAN -----------------------------------------------------------------
         for match in IBAN_RX.finditer(text):
@@ -301,28 +310,29 @@ class AccountIdDetector:
             candidates.append(_Candidate(span, "ein"))
 
         # Generic account numbers ----------------------------------------------
-        for match in GENERIC_HINT_RX.finditer(text):
-            start, end = match.span(1)
-            end, raw = _trim(text, start, end)
-            compact = re.sub(r"[ -]", "", raw).upper()
-            if not (6 <= len(compact) <= 34) or not any(c.isdigit() for c in compact):
-                continue
-            attrs = {
-                "subtype": "generic",
-                "normalized": compact,
-                "display": raw,
-                "length": len(compact),
-            }
-            span = EntitySpan(
-                start,
-                end,
-                raw,
-                EntityLabel.ACCOUNT_ID,
-                self.name(),
-                0.9,
-                attrs,
-            )
-            candidates.append(_Candidate(span, "generic"))
+        if enable_generic:
+            for match in GENERIC_HINT_RX.finditer(text):
+                start, end = match.span(1)
+                end, raw = _trim(text, start, end)
+                compact = re.sub(r"[ -]", "", raw).upper()
+                if not (6 <= len(compact) <= 34) or not any(c.isdigit() for c in compact):
+                    continue
+                attrs = {
+                    "subtype": "generic",
+                    "normalized": compact,
+                    "display": raw,
+                    "length": len(compact),
+                }
+                span = EntitySpan(
+                    start,
+                    end,
+                    raw,
+                    EntityLabel.ACCOUNT_ID,
+                    self.name(),
+                    0.9,
+                    attrs,
+                )
+                candidates.append(_Candidate(span, "generic"))
 
         # Overlap resolution ---------------------------------------------------
         sorted_cands = sorted(
