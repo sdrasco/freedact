@@ -32,11 +32,13 @@ def test_name_case_and_initials() -> None:
 
 def test_date_and_phone_format() -> None:
     cfg = load_config()
-    text = "DOB1: July 4, 1982; DOB2: 12/21/1975; Phone: (415) 867-5309"
+    month_name = "May 9, 1960"
+    numeric = "03/18/1976"
+    text = f"DOB1: {month_name}; DOB2: {numeric}; Phone: (415) 867-5309"
     spans = [
-        _span(6, 17, "July 4, 1982", EntityLabel.DOB, attrs={"normalized": "1982-07-04"}),
-        _span(25, 35, "12/21/1975", EntityLabel.DOB, attrs={"normalized": "1975-12-21"}),
-        _span(45, 59, "(415) 867-5309", EntityLabel.PHONE),
+        _span(6, 17, month_name, EntityLabel.DOB, attrs={"normalized": "1960-05-09"}),
+        _span(25, 35, numeric, EntityLabel.DOB, attrs={"normalized": "1976-03-18"}),
+        _span(44, 58, "(415) 867-5309", EntityLabel.PHONE),
     ]
     plan = plan_builder.build_replacement_plan(text, spans, cfg)
     dob_repls = [p.replacement for p in plan if p.label is EntityLabel.DOB]

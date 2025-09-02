@@ -116,4 +116,4 @@ def test_fuzzed_fixtures_pipeline() -> None:
             # F) DOB labeling robustness
             if name == "dates_mixed":
                 norm_redacted = redacted.replace("\r\n", "\n")
-                assert "12/21/1975" not in norm_redacted
+                assert "03/18/1976" not in norm_redacted

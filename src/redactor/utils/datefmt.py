@@ -21,7 +21,7 @@ def parse_like(source: str) -> tuple[date, Style] | None:
     """Parse ``source`` into a :class:`date` and style tag.
 
     The function recognises numeric ``M/D/YYYY`` or ``MM/DD/YYYY`` forms and
-    month name forms such as ``July 4, 1982``.  Whitespace around the date is
+    month name forms such as ``May 9, 1960``.  Whitespace around the date is
     ignored.  ``None`` is returned when parsing fails.
     """
 

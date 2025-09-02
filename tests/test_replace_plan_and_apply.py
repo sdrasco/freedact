@@ -152,34 +152,34 @@ def test_account_id_replacements() -> None:
 
 def test_dob_vs_generic_date_policy() -> None:
     cfg = load_config()
-    text = "Date of Birth: July 4, 1982. Executed on July 5, 1982."
+    text = "Date of Birth: May 9, 1960. Executed on May 10, 1960."
     spans = [
         _span(
             15,
-            27,
-            "July 4, 1982",
+            26,
+            "May 9, 1960",
             EntityLabel.DOB,
-            attrs={"format": "month_name_mdY", "normalized": "1982-07-04"},
+            attrs={"format": "month_name_mdY", "normalized": "1960-05-09"},
         ),
         _span(
-            41,
-            53,
-            "July 5, 1982",
+            40,
+            52,
+            "May 10, 1960",
             EntityLabel.DATE_GENERIC,
-            attrs={"format": "month_name_mdY", "normalized": "1982-07-05"},
+            attrs={"format": "month_name_mdY", "normalized": "1960-05-10"},
         ),
     ]
     plan = plan_builder.build_replacement_plan(text, spans, cfg)
     assert any(e.label is EntityLabel.DOB for e in plan)
     assert all(e.label is not EntityLabel.DATE_GENERIC for e in plan)
     new_text, _ = applier.apply_plan(text, plan)
-    assert "July 4, 1982" not in new_text
-    assert "July 5, 1982" in new_text
+    assert "May 9, 1960" not in new_text
+    assert "May 10, 1960" in new_text
     cfg.redact.generic_dates = True
     plan2 = plan_builder.build_replacement_plan(text, spans, cfg)
     new_text2, _ = applier.apply_plan(text, plan2)
-    assert "July 4, 1982" not in new_text2
-    assert "July 5, 1982" not in new_text2
+    assert "May 9, 1960" not in new_text2
+    assert "May 10, 1960" not in new_text2
 
 
 def test_adjacent_spans_apply_independently() -> None:
