@@ -24,6 +24,7 @@ from typing import Callable, cast
 from redactor.config import ConfigModel
 from redactor.detect.base import EntityLabel, EntitySpan
 from redactor.pseudo import PseudonymGenerator, case_preserver, number_rules
+from redactor.pseudo.generators.address import generate_address_block_like
 from redactor.utils import datefmt
 from redactor.utils.textspan import ensure_non_overlapping
 
@@ -286,18 +287,22 @@ def build_replacement_plan(
 
             replacement = _ensure_diff(sp.text, key, build_bank)
         elif label is EntityLabel.ADDRESS_BLOCK:
-            key_attr = cast(str | None, sp.attrs.get("normalized_block"))
-            key = sp.entity_id or key_attr or sp.text
-            line_kinds = cast(list[str] | None, sp.attrs.get("line_kinds"))
-
-            def build_addr(
-                k: str,
-                text: str = sp.text,
-                line_kinds: list[str] | None = line_kinds,
-            ) -> str:
-                return gen.address_block_like(text, key=k, line_kinds=line_kinds)
-
-            replacement = _ensure_diff(sp.text, key, build_addr)
+            base_key = sp.entity_id or f"ADDR:{sp.start}-{sp.end}"
+            expected_nl = sp.text.count("\n")
+            lines_meta = cast(list[dict[str, object]], sp.attrs.get("lines", []))
+            replacement = None
+            for salt in ("", ":1", ":2"):
+                candidate = generate_address_block_like(
+                    sp, gen=gen, key=f"{base_key}{salt}" if salt else base_key
+                )
+                if candidate.count("\n") == expected_nl:
+                    replacement = candidate
+                    break
+            if replacement is None:
+                eol = "\r\n" if "\r\n" in sp.text else "\n"
+                replacement = f"1234 Oak St{eol}Springfield, IL 62704"
+            if "Acct_" in replacement or "ACCT_" in replacement:
+                raise AssertionError("unsafe token in address replacement")
         elif label is EntityLabel.EMAIL:
             base_local = cast(str, sp.attrs.get("base_local") or "").lower()
             tag = cast(str | None, sp.attrs.get("tag"))
@@ -445,6 +450,14 @@ def build_replacement_plan(
             meta["alias_kind"] = sp.attrs.get("alias_kind")
             if sp.entity_id:
                 meta["cluster_id"] = sp.entity_id
+        if label is EntityLabel.ADDRESS_BLOCK:
+            meta.update(
+                {
+                    "block_lines": len(lines_meta),
+                    "zip_kind": sp.attrs.get("zip_kind"),
+                    "source_hint": sp.attrs.get("source_hint"),
+                }
+            )
         plan.append(
             PlanEntry(
                 start=sp.start,
