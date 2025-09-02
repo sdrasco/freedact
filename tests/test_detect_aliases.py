@@ -42,6 +42,17 @@ def test_role_alias(det: AliasDetector) -> None:
     assert attrs["trigger"] == "hereinafter"
 
 
+def test_same_line_subject(det: AliasDetector) -> None:
+    text = "Acme LLC (hereinafter “Buyer”)"
+    spans = det.detect(text)
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.text == "Buyer"
+    attrs = span.attrs
+    assert attrs["subject_text"] == "Acme LLC"
+    assert attrs["trigger"] == "hereinafter"
+
+
 def test_hereinafter_prev_line_guess(det: AliasDetector) -> None:
     text = 'John Doe\nHereinafter "Morgan" signs'
     spans = det.detect(text)
@@ -78,6 +89,19 @@ def test_dba(det: AliasDetector) -> None:
     span = det.detect(text)[0]
     assert span.text == "Acme Widgets"
     assert span.attrs["trigger"] == "dba"
+
+
+@pytest.mark.parametrize(
+    "text,alias",
+    [
+        ("Jane Smith, aka “Janie”", "Janie"),
+        ("Robert Roe fka “Rob Roe”", "Rob Roe"),
+        ("Widgets Inc., dba “Acme Widgets”", "Acme Widgets"),
+    ],
+)
+def test_trigger_and_quote_variants(det: AliasDetector, text: str, alias: str) -> None:
+    span = det.detect(text)[0]
+    assert span.text == alias
 
 
 def test_boundary_and_quotes(det: AliasDetector) -> None:
