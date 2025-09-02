@@ -69,7 +69,9 @@ def test_audit_workflow(tmp_path: Path) -> None:
     assert entries[2].label is EntityLabel.EMAIL
 
     cfg = load_config(env={"REDACTOR_SEED_SECRET": "s3cret"})
-    summary, verification_dict = summarize_audit(before, entries, cfg=cfg, verification_report=None)
+    summary, verification_dict = summarize_audit(
+        before, entries, cfg=cfg, plan=plan, verification_report=None
+    )
     assert summary.total_replacements == 3
     assert summary.counts_by_label == {"PERSON": 1, "ALIAS_LABEL": 1, "EMAIL": 1}
     assert summary.deltas_total == sum(e.length_delta for e in entries)
@@ -78,7 +80,9 @@ def test_audit_workflow(tmp_path: Path) -> None:
     assert verification_dict is None
 
     cfg_no = load_config(env={})
-    summary_no, _ = summarize_audit(before, entries, cfg=cfg_no, verification_report=None)
+    summary_no, _ = summarize_audit(
+        before, entries, cfg=cfg_no, plan=plan, verification_report=None
+    )
     assert summary_no.seed_present is False
     summary_json = json.dumps(asdict(summary))
     assert "s3cret" not in summary_json
@@ -127,13 +131,15 @@ def test_seed_presence_signal() -> None:
     entries = build_audit_entries(before, after, plan)
 
     cfg = load_config(env={"REDACTOR_SEED_SECRET": "unit-test-secret"})
-    summary, _ = summarize_audit(before, entries, cfg=cfg, verification_report=None)
+    summary, _ = summarize_audit(before, entries, cfg=cfg, plan=plan, verification_report=None)
     assert summary.seed_present is True
     summary_json = json.dumps(asdict(summary))
     assert "unit-test-secret" not in summary_json
 
     cfg_no = load_config(env={})
-    summary_no, _ = summarize_audit(before, entries, cfg=cfg_no, verification_report=None)
+    summary_no, _ = summarize_audit(
+        before, entries, cfg=cfg_no, plan=plan, verification_report=None
+    )
     assert summary_no.seed_present is False
 
 

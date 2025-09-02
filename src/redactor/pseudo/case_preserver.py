@@ -102,6 +102,24 @@ def format_like(source: str, replacement: str, *, rng: Optional[random.Random] =
             core_work = core_work[: -len(suff)]
             break
 
+    # Handle patterns with leading initials followed by additional tokens,
+    # e.g. ``"J. D. Salinger"``.  The initials portion is preserved separately
+    # before standard punctuation mirroring is applied to the remainder.
+    m = re.match(r"^((?:[A-Za-z]\.[\s]*)+)(.+)$", core_work)
+    if m:
+        init_part = m.group(1).rstrip()
+        rest_part = m.group(2).lstrip()
+        tokens = re.findall(r"[^\W\d_]+", replacement)
+        need = max(1, init_part.count("."))
+        init_full = " ".join(tokens[:need]) if tokens else ""
+        initials = preserve_initials(init_part, init_full, rng=rng)
+        rest_full = " ".join(tokens[need:]) if len(tokens) > need else ""
+        rest_fmt = match_case(rest_part, rest_full) if rest_full else rest_part
+        out = initials + (" " + rest_fmt if rest_fmt else "")
+        if poss_suffix:
+            out += poss_suffix
+        return prefix + out + suffix
+
     profile = letter_punct_profile(core_work)
 
     # When the replacement contains token boundaries (spaces), try to align

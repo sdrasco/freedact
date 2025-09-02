@@ -44,13 +44,28 @@ class PlanEntry:
     meta: dict[str, object]
 
 
-def _ensure_diff(original: str, key: str, builder: Callable[[str], str]) -> str:
-    """Return ``builder`` output ensuring it differs from ``original``."""
+def _ensure_diff(
+    original: str,
+    key: str,
+    builder: Callable[[str], str],
+    *,
+    ban_acct: bool = True,
+) -> str:
+    """Return ``builder`` output ensuring it differs from ``original``.
 
+    A bounded number of deterministic retries is performed using salted keys.
+    When ``ban_acct`` is ``True`` candidates starting with ``"acct_"`` or
+    ``"Acct_"`` are rejected and regenerated.
+    """
+
+    banned = {"acct_", "Acct_"}
     for salt in ("", ":1", ":2"):
         candidate = builder(key + salt if salt else key)
-        if candidate != original:
-            return candidate
+        if candidate == original:
+            continue
+        if ban_acct and any(candidate.startswith(b) for b in banned):
+            continue
+        return candidate
     return candidate
 
 
@@ -151,31 +166,54 @@ def _ensure_safe_replacement(
     *,
     key: str,
     gen: PseudonymGenerator,
-) -> str:
-    """Return a safe replacement value for ``candidate``."""
+) -> tuple[str, int, str]:
+    """Return a safe replacement value for ``candidate``.
 
+    The function attempts to validate ``candidate`` according to ``label`` and
+    deterministically regenerates it up to two times using salted ``key`` values
+    when unsafe.  A tuple of ``(safe_value, retry_count, reason)`` is returned.
+    ``reason`` holds the cause for the first rejection.
+    """
+
+    retry_count = 0
+    reason = ""
     for attempt in range(3):
         if label is EntityLabel.EMAIL:
             local, _, domain = candidate.partition("@")
-            domain = domain.lower()
-            if not domain.isascii() or domain != "example.org":
-                candidate = f"{local}@example.org"
-                domain = "example.org"
-            if domain == "example.org" and domain.isascii():
-                return candidate
-            token = gen.token("EMAIL", f"{key}:{attempt + 1}", length=10)
-            local = f"u{token}"
+            domain_l = domain.lower()
+            base_len = len(source.split("@", 1)[0].split("+", 1)[0])
+            if not domain_l.isascii():
+                reason = "non_ascii_domain"
+            elif domain_l not in {"example.org", "example.com", "example.net"}:
+                reason = "unsafe_domain"
+            elif candidate == source:
+                reason = "matches_source"
+            elif not local:
+                reason = "empty_local"
+            else:
+                return candidate, retry_count, reason
+
+            retry_count += 1
+            token = gen.token("EMAIL", f"{key}:{attempt + 1}", length=max(8, base_len))
+            local = token[:base_len] if base_len else token
             if "+" in source.split("@", 1)[0]:
-                local = f"{local}+t{token[-3:]}"
+                tag = source.split("@", 1)[0].split("+", 1)[1]
+                local = f"{local}+{tag}"
             candidate = f"{local}@example.org"
             continue
+
         if label is EntityLabel.PHONE:
             digits = _normalize_digits(candidate)
             if candidate.startswith("+"):
                 if digits.startswith("1555"):
-                    return candidate
+                    return candidate, retry_count, reason
+                reason = "unsafe_non_555"
             elif len(digits) >= 10 and digits[3:6] == "555":
-                return candidate
+                return candidate, retry_count, reason
+            else:
+                reason = "invalid_digit_count" if len(digits) < 7 else "unsafe_non_555"
+
+            retry_count += 1
             rng = gen.rng("SAFE_PHONE", f"{key}:{attempt + 1}")
             npa = rng.randint(200, 999)
             line = rng.randint(0, 9999)
@@ -186,12 +224,15 @@ def _ensure_safe_replacement(
             else:
                 candidate = _format_digits_like(candidate, new_digits)
             continue
+
         if label is EntityLabel.ACCOUNT_ID:
             subtype = _detect_account_subtype(source)
             digits = _normalize_digits(candidate)
             if subtype == "cc":
-                if _luhn_valid(digits):
-                    return candidate
+                if _luhn_valid(digits) and digits != _normalize_digits(source):
+                    return candidate, retry_count, reason
+                reason = "luhn_invalid"
+                retry_count += 1
                 candidate = gen.cc_like(source, key=f"{key}:{attempt + 1}")
                 continue
             if subtype == "routing_aba":
@@ -200,47 +241,63 @@ def _ensure_safe_replacement(
                     and digits != "021000021"
                     and _aba_check_digit(digits[:8]) == digits[8]
                 ):
-                    return candidate
+                    return candidate, retry_count, reason
+                reason = "aba_invalid"
+                retry_count += 1
                 candidate = gen.routing_like(source, key=f"{key}:{attempt + 1}")
                 continue
             if subtype == "ssn":
                 area = digits[:3]
                 if area not in {"000", "666"} and not area.startswith("9"):
-                    return candidate
+                    return candidate, retry_count, reason
+                reason = "ssn_invalid"
+                retry_count += 1
                 candidate = gen.ssn_like(source, key=f"{key}:{attempt + 1}")
                 continue
             if subtype == "ein":
                 if "-" in candidate and digits != _normalize_digits(source):
-                    return candidate
+                    return candidate, retry_count, reason
+                reason = "ein_match"
+                retry_count += 1
                 candidate = gen.ein_like(source, key=f"{key}:{attempt + 1}")
                 continue
             if subtype == "iban":
                 if candidate != source:
-                    return candidate
+                    return candidate, retry_count, reason
+                reason = "matches_source"
+                retry_count += 1
                 candidate = gen.iban_like(source, key=f"{key}:{attempt + 1}")
                 continue
             if subtype == "swift_bic":
                 if candidate.isascii() and candidate != source:
-                    return candidate
+                    return candidate, retry_count, reason
+                reason = "unsafe_bic"
+                retry_count += 1
                 candidate = case_preserver.match_case(
                     source, gen.account_number(f"{key}:{attempt + 1}", kind="bic")
                 )
                 continue
             if digits != _normalize_digits(source):
-                return candidate
+                return candidate, retry_count, reason
+            reason = "matches_source"
+            retry_count += 1
             candidate = gen.generic_digits_like(source, key=f"{key}:{attempt + 1}")
             continue
+
         if label is EntityLabel.DOB:
             if _normalize_digits(candidate) != _normalize_digits(source):
-                return candidate
+                return candidate, retry_count, reason
+            reason = "matches_source"
+            retry_count += 1
             candidate = _generate_fake_date_like(
                 source,
                 key=f"{key}:{attempt + 1}",
                 gen=gen,
             )
             continue
-        return candidate
-    return candidate
+
+        return candidate, retry_count, reason
+    return candidate, retry_count, reason
 
 
 def build_replacement_plan(
@@ -264,6 +321,8 @@ def build_replacement_plan(
         replacement: str | None = None
         label = sp.label
         skip_flag = False
+        retries = 0
+        reason = ""
 
         if label is EntityLabel.PERSON:
             key = sp.entity_id or sp.text
@@ -307,16 +366,17 @@ def build_replacement_plan(
             base_local = cast(str, sp.attrs.get("base_local") or "").lower()
             tag = cast(str | None, sp.attrs.get("tag"))
             key = base_local or sp.text
+            base_len = len(base_local) or len(sp.text.split("@", 1)[0].split("+", 1)[0])
 
             def build_email(token_key: str, tag: str | None = tag) -> str:
-                token = gen.token("EMAIL", token_key, length=10)
-                local = f"u{token}"
+                token = gen.token("EMAIL", token_key, length=max(8, base_len))
+                local = token[:base_len] if base_len else token
                 if tag:
-                    local = f"{local}+t{token[-3:]}"
+                    local = f"{local}+{tag}"
                 return f"{local}@example.org"
 
             replacement = _ensure_diff(sp.text, key, build_email)
-            replacement = _ensure_safe_replacement(
+            replacement, retries, reason = _ensure_safe_replacement(
                 EntityLabel.EMAIL, sp.text, replacement, key=key, gen=gen
             )
         elif label is EntityLabel.PHONE:
@@ -326,7 +386,7 @@ def build_replacement_plan(
                 return number_rules.generate_generic_digits_like(text, key=k, gen=gen)
 
             replacement = _ensure_diff(sp.text, key, build_phone)
-            replacement = _ensure_safe_replacement(
+            replacement, retries, reason = _ensure_safe_replacement(
                 EntityLabel.PHONE, sp.text, replacement, key=key, gen=gen
             )
         elif label is EntityLabel.ACCOUNT_ID:
@@ -337,8 +397,8 @@ def build_replacement_plan(
                 def build_cc(k: str, text: str = sp.text) -> str:
                     return number_rules.generate_cc_like(text, key=k, gen=gen)
 
-                replacement = _ensure_diff(sp.text, key, build_cc)
-                replacement = _ensure_safe_replacement(
+                replacement = _ensure_diff(sp.text, key, build_cc, ban_acct=False)
+                replacement, retries, reason = _ensure_safe_replacement(
                     EntityLabel.ACCOUNT_ID, sp.text, replacement, key=key, gen=gen
                 )
             elif subtype == "routing_aba":
@@ -346,8 +406,8 @@ def build_replacement_plan(
                 def build_routing(k: str, text: str = sp.text) -> str:
                     return number_rules.generate_routing_like(text, key=k, gen=gen)
 
-                replacement = _ensure_diff(sp.text, key, build_routing)
-                replacement = _ensure_safe_replacement(
+                replacement = _ensure_diff(sp.text, key, build_routing, ban_acct=False)
+                replacement, retries, reason = _ensure_safe_replacement(
                     EntityLabel.ACCOUNT_ID, sp.text, replacement, key=key, gen=gen
                 )
             elif subtype == "iban":
@@ -355,8 +415,8 @@ def build_replacement_plan(
                 def build_iban(k: str, text: str = sp.text) -> str:
                     return number_rules.generate_iban_like(text, key=k, gen=gen)
 
-                replacement = _ensure_diff(sp.text, key, build_iban)
-                replacement = _ensure_safe_replacement(
+                replacement = _ensure_diff(sp.text, key, build_iban, ban_acct=False)
+                replacement, retries, reason = _ensure_safe_replacement(
                     EntityLabel.ACCOUNT_ID, sp.text, replacement, key=key, gen=gen
                 )
             elif subtype == "ssn":
@@ -364,8 +424,8 @@ def build_replacement_plan(
                 def build_ssn(k: str, text: str = sp.text) -> str:
                     return number_rules.generate_ssn_like(text, key=k, gen=gen)
 
-                replacement = _ensure_diff(sp.text, key, build_ssn)
-                replacement = _ensure_safe_replacement(
+                replacement = _ensure_diff(sp.text, key, build_ssn, ban_acct=False)
+                replacement, retries, reason = _ensure_safe_replacement(
                     EntityLabel.ACCOUNT_ID, sp.text, replacement, key=key, gen=gen
                 )
             elif subtype == "ein":
@@ -373,8 +433,8 @@ def build_replacement_plan(
                 def build_ein(k: str, text: str = sp.text) -> str:
                     return number_rules.generate_ein_like(text, key=k, gen=gen)
 
-                replacement = _ensure_diff(sp.text, key, build_ein)
-                replacement = _ensure_safe_replacement(
+                replacement = _ensure_diff(sp.text, key, build_ein, ban_acct=False)
+                replacement, retries, reason = _ensure_safe_replacement(
                     EntityLabel.ACCOUNT_ID, sp.text, replacement, key=key, gen=gen
                 )
             elif subtype == "swift_bic":
@@ -382,8 +442,8 @@ def build_replacement_plan(
                 def build_bic(k: str, text: str = sp.text) -> str:
                     return case_preserver.match_case(text, gen.account_number(k, kind="bic"))
 
-                replacement = _ensure_diff(sp.text, key, build_bic)
-                replacement = _ensure_safe_replacement(
+                replacement = _ensure_diff(sp.text, key, build_bic, ban_acct=False)
+                replacement, retries, reason = _ensure_safe_replacement(
                     EntityLabel.ACCOUNT_ID, sp.text, replacement, key=key, gen=gen
                 )
             else:
@@ -391,14 +451,14 @@ def build_replacement_plan(
                 def build_generic(k: str, text: str = sp.text) -> str:
                     return number_rules.generate_generic_digits_like(text, key=k, gen=gen)
 
-                replacement = _ensure_diff(sp.text, key, build_generic)
-                replacement = _ensure_safe_replacement(
+                replacement = _ensure_diff(sp.text, key, build_generic, ban_acct=False)
+                replacement, retries, reason = _ensure_safe_replacement(
                     EntityLabel.ACCOUNT_ID, sp.text, replacement, key=key, gen=gen
                 )
         elif label is EntityLabel.DOB:
             key = sp.entity_id or cast(str | None, sp.attrs.get("normalized")) or sp.text
             replacement = _generate_fake_date_like(sp.text, key=key, gen=gen)
-            replacement = _ensure_safe_replacement(
+            replacement, retries, reason = _ensure_safe_replacement(
                 EntityLabel.DOB, sp.text, replacement, key=key, gen=gen
             )
         elif label is EntityLabel.DATE_GENERIC:
@@ -458,6 +518,12 @@ def build_replacement_plan(
                     "source_hint": sp.attrs.get("source_hint"),
                 }
             )
+        if (
+            label in {EntityLabel.EMAIL, EntityLabel.PHONE, EntityLabel.ACCOUNT_ID, EntityLabel.DOB}
+            and retries
+        ):
+            meta["safety_retry_count"] = retries
+            meta["safety_reason"] = reason
         plan.append(
             PlanEntry(
                 start=sp.start,

@@ -1,3 +1,3 @@
 """Realistic pseudonym generators."""
 
-__all__: list[str] = []
+__all__ = ["address", "email", "phone", "numbers"]

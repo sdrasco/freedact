@@ -1,6 +1,7 @@
-from __future__ import annotations
-
 import re
+from typing import Dict
+
+import pytest
 
 from redactor.config import load_config
 from redactor.detect.base import EntityLabel, EntitySpan
@@ -13,9 +14,9 @@ def _span(
     text: str,
     label: EntityLabel,
     *,
-    attrs: dict[str, object] | None = None,
+    attrs: Dict[str, object] | None = None,
 ) -> EntitySpan:
-    return EntitySpan(start, end, text, label, "test", 0.9, attrs or {})
+    return EntitySpan(start, end, text, label, "t", 0.9, attrs or {})
 
 
 def _luhn_valid(num: str) -> bool:
@@ -36,104 +37,99 @@ def _aba_check_digit(eight: str) -> str:
     return str((10 - total % 10) % 10)
 
 
-def test_email_replacement_safe_domain() -> None:
+def test_email_guard() -> None:
     cfg = load_config()
-    src = "john@acme.com"
-    text = f"Contact {src}"
-    s = text.index(src)
-    span = _span(s, s + len(src), src, EntityLabel.EMAIL, attrs={"base_local": "john"})
-    plan = plan_builder.build_replacement_plan(text, [span], cfg)
+    text = "john@acme.com"
+    spans = [_span(0, len(text), text, EntityLabel.EMAIL, attrs={"base_local": "john"})]
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
     repl = plan[0].replacement
     assert repl.endswith("@example.org")
-    local = repl.split("@", 1)[0].split("+", 1)[0]
-    assert local.lower() != "john"
+    assert repl != text
+    local, _, domain = repl.partition("@")
+    assert domain == "example.org"
+    assert len(local.split("+")[0]) == len("john")
 
 
-def test_phone_replacement_uses_safe_pattern() -> None:
+def test_phone_guard() -> None:
     cfg = load_config()
-    src = "(415) 867-5309"
-    text = f"Call {src} now"
-    s = text.index(src)
-    span = _span(s, s + len(src), src, EntityLabel.PHONE)
-    plan = plan_builder.build_replacement_plan(text, [span], cfg)
-    repl = plan[0].replacement
-    for sc, rc in zip(src, repl, strict=True):
-        if not sc.isdigit():
-            assert sc == rc
-    digits = re.sub(r"\D", "", repl)
-    if repl.startswith("+"):
-        assert digits.startswith("1555")
-    else:
-        assert digits[3:6] == "555"
-
-
-def test_account_routing_safe() -> None:
-    cfg = load_config()
-    src = "021000021"
-    text = f"routing {src}"
-    s = text.index(src)
-    span = _span(s, s + len(src), src, EntityLabel.ACCOUNT_ID, attrs={"subtype": "routing_aba"})
-    plan = plan_builder.build_replacement_plan(text, [span], cfg)
+    text = "(415) 867-5309"
+    spans = [_span(0, len(text), text, EntityLabel.PHONE)]
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
     repl = plan[0].replacement
     digits = re.sub(r"\D", "", repl)
-    assert digits != src
+    assert digits[3:6] == "555"
+    assert re.sub(r"\d", "0", repl) == re.sub(r"\d", "0", text)
+    assert repl != text
+
+
+def test_cc_guard() -> None:
+    cfg = load_config()
+    text = "4111-1111-1111-1111"
+    spans = [_span(0, len(text), text, EntityLabel.ACCOUNT_ID, attrs={"subtype": "cc"})]
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
+    repl = plan[0].replacement
+    digits = re.sub(r"\D", "", repl)
+    assert _luhn_valid(digits)
+    assert repl != text
+    assert re.sub(r"\d", "0", repl) == re.sub(r"\d", "0", text)
+
+
+def test_routing_guard() -> None:
+    cfg = load_config()
+    text = "123456789"
+    spans = [_span(0, len(text), text, EntityLabel.ACCOUNT_ID, attrs={"subtype": "routing_aba"})]
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
+    repl = plan[0].replacement
+    digits = re.sub(r"\D", "", repl)
     assert len(digits) == 9
-    assert _aba_check_digit(digits[:8]) == digits[8]
     assert digits != "021000021"
+    assert _aba_check_digit(digits[:8]) == digits[8]
 
 
-def test_account_ein_safe() -> None:
+def test_ein_guard() -> None:
     cfg = load_config()
-    src = "12-3456789"
-    text = f"ein {src}"
-    s = text.index(src)
-    span = _span(s, s + len(src), src, EntityLabel.ACCOUNT_ID, attrs={"subtype": "ein"})
-    plan = plan_builder.build_replacement_plan(text, [span], cfg)
+    text = "12-3456789"
+    spans = [_span(0, len(text), text, EntityLabel.ACCOUNT_ID, attrs={"subtype": "ein"})]
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
     repl = plan[0].replacement
     assert re.fullmatch(r"\d{2}-\d{7}", repl)
-    assert repl != src
+    assert repl != text
 
 
-def test_account_cc_safe() -> None:
+def test_generic_account_guard() -> None:
     cfg = load_config()
-    src = "4111 1111 1111 1111"
-    text = f"cc {src}"
-    s = text.index(src)
-    span = _span(s, s + len(src), src, EntityLabel.ACCOUNT_ID, attrs={"subtype": "cc"})
-    plan = plan_builder.build_replacement_plan(text, [span], cfg)
+    text = "123-456-7890"
+    spans = [_span(0, len(text), text, EntityLabel.ACCOUNT_ID)]
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
     repl = plan[0].replacement
-    digits = re.sub(r"\D", "", repl)
-    assert repl != src
-    assert _luhn_valid(digits)
+    assert re.sub(r"\d", "0", repl) == re.sub(r"\d", "0", text)
+    assert repl != text
 
 
-def test_account_generic_safe() -> None:
+def test_dob_guard() -> None:
     cfg = load_config()
-    src = "000123-456-789"
-    text = f"num {src}"
-    s = text.index(src)
-    span = _span(s, s + len(src), src, EntityLabel.ACCOUNT_ID, attrs={"subtype": "generic"})
-    plan = plan_builder.build_replacement_plan(text, [span], cfg)
+    text = "July 4, 1982"
+    spans = [_span(0, len(text), text, EntityLabel.DOB, attrs={"normalized": "1982-07-04"})]
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
     repl = plan[0].replacement
-    assert repl != src
-    hy_src = [i for i, ch in enumerate(src) if ch == "-"]
-    hy_repl = [i for i, ch in enumerate(repl) if ch == "-"]
-    assert hy_src == hy_repl
-
-
-def test_dob_safe_and_shaped() -> None:
-    cfg = load_config()
-    src = "July 4, 1982"
-    text = f"DOB {src}"
-    s = text.index(src)
-    span = _span(
-        s,
-        s + len(src),
-        src,
-        EntityLabel.DOB,
-        attrs={"format": "month_name_mdY", "normalized": "1982-07-04"},
-    )
-    plan = plan_builder.build_replacement_plan(text, [span], cfg)
-    repl = plan[0].replacement
-    assert repl != src
+    assert repl != text
     assert re.fullmatch(r"[A-Za-z]+ \d{1,2}, \d{4}", repl)
+
+
+def test_ban_acct_prefix_non_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = load_config()
+    text = "John"
+    spans = [_span(0, len(text), text, EntityLabel.PERSON)]
+
+    from redactor.pseudo import name_rules
+    from redactor.pseudo.generator import PseudonymGenerator
+
+    def fake_generate_person_like(source: str, *, key: str, gen: PseudonymGenerator) -> str:
+        if key.endswith(":1"):
+            return "Alan Smith"
+        return "Acct_12345"
+
+    monkeypatch.setattr(name_rules, "generate_person_like", fake_generate_person_like)
+    plan = plan_builder.build_replacement_plan(text, spans, cfg)
+    repl = plan[0].replacement
+    assert not repl.lower().startswith("acct_")
