@@ -97,6 +97,8 @@ _KIND_ORDER = {
 
 _HIGH_CONF_SUFFIXES = {"na", "national_association", "plc", "nv"}
 
+_SUFFIX_KEEP_PERIOD = {"N.A.", "N.V.", "Inc.", "Corp.", "Co.", "Ltd.", "S.A."}
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -189,24 +191,25 @@ class BankOrgDetector:
             for m in matches:
                 start, end = m.span()
                 suffix_raw = m.groupdict().get("suffix")
-                has_suffix_dot = False
-                if suffix_raw and (
-                    suffix_raw.rstrip().endswith(".") or (end < len(text) and text[end] == ".")
-                ):
-                    if end < len(text) and text[end] == ".":
-                        end += 1
-                    has_suffix_dot = True
+                if suffix_raw and end < len(text) and text[end] == ".":
+                    end += 1
                 span_text = text[start:end]
 
-                if span_text.startswith("(") and span_text.endswith(")"):
+                if span_text.startswith("("):
                     start += 1
+                    span_text = text[start:end]
+                if span_text.endswith(")"):
                     end -= 1
                     span_text = text[start:end]
 
-                if span_text and span_text[-1] in RIGHT_TRIM:
-                    if not (has_suffix_dot and span_text[-1] == "."):
-                        end -= 1
-                        span_text = text[start:end]
+                keep_suffix_dot = any(span_text.endswith(sfx) for sfx in _SUFFIX_KEEP_PERIOD)
+                if (
+                    span_text
+                    and span_text[-1] in RIGHT_TRIM
+                    and not (keep_suffix_dot and span_text[-1] == ".")
+                ):
+                    end -= 1
+                    span_text = text[start:end]
 
                 # Exclusion heuristics for patterns containing the word "Bank".
                 if "Bank" in span_text:

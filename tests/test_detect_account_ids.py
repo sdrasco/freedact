@@ -44,6 +44,8 @@ def test_true_positive_aba_with_context(det: AccountIdDetector) -> None:
     spans = det.detect(text)
     span = _find_span(spans, "routing_aba")
     assert span.text == "021000021"
+    assert span.attrs["subtype"] == "routing_aba"
+    assert span.attrs["normalized"] == "021000021"
     assert span.attrs["issuer_or_country"] == "US"
 
 
@@ -75,6 +77,25 @@ def test_true_positive_ein(det: AccountIdDetector) -> None:
     assert span.attrs["normalized"] == "123456789"
 
 
+def test_negatives_bare_aba(det: AccountIdDetector) -> None:
+    assert det.detect("021000021") == []
+
+
+def test_ein_requires_hyphen(det: AccountIdDetector) -> None:
+    spans = det.detect("12-3456789")
+    assert _find_span(spans, "ein").attrs["normalized"] == "123456789"
+    spans = det.detect("123456789")
+    assert all(s.attrs.get("subtype") != "ein" for s in spans)
+
+
+def test_generic_floor(det: AccountIdDetector) -> None:
+    assert det.detect("acct abcdefghij") == []
+    assert det.detect("Ref: 12-34") == []
+    spans = det.detect("Ref: 123-456")
+    span = _find_span(spans, "generic")
+    assert span.text == "123-456"
+
+
 def test_true_positive_generic(det: AccountIdDetector) -> None:
     text = "Acct # 0034-567-89012"
     spans = det.detect(text)
@@ -102,9 +123,7 @@ def test_boundary_trimming_card(det: AccountIdDetector) -> None:
         "1,234.56",
         "03/04/2021",
         "§ 123.45(a)(2)",
-        "Ref: 000000000",
         "user@example.com",
-        "021000021",
     ],
 )
 def test_negatives(det: AccountIdDetector, text: str) -> None:
