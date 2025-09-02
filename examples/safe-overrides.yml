@@ -1,0 +1,17 @@
+detectors:
+  ner:
+    enabled: false
+    require: false
+  coref:
+    enabled: false
+    backend: regex
+    require: false
+  account_ids:
+    generic:
+      enabled: false
+redact:
+  alias_labels: keep_roles
+  generic_dates: false
+filters:
+  protect_headings: true
+  gpe_outside_addresses: true

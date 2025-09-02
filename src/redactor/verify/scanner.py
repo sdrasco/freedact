@@ -139,7 +139,7 @@ def scan_text(
         for pe in applied_plan:
             if pe.label is EntityLabel.ADDRESS_BLOCK:
                 for line in pe.replacement.splitlines():
-                    stripped = line.rstrip()
+                    stripped = line.strip()
                     if stripped:
                         block_lines.add(stripped)
     residual: list[VerificationFinding] = []

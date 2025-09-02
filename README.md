@@ -84,6 +84,14 @@ Useful toggles:
 
 Exit codes: `0` success, `3` I/O error, `4` configuration/secret error, `5` pipeline error, `6` verification failure.
 
+### Safe profile (quick start for legal text)
+
+```bash
+redactor run --in input.txt --out out.txt --report report --config examples/safe-overrides.yml
+```
+
+Disables NER/coref and generic account IDs while protecting headings and standalone locations.
+
 
 
 ## Configuration & Secrets

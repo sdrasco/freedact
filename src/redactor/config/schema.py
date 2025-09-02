@@ -99,12 +99,38 @@ class CorefSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AccountIdGenericSettings(BaseModel):
+    """Toggle for generic account id detection."""
+
+    enabled: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AccountIdSettings(BaseModel):
+    """Account ID detector configuration."""
+
+    generic: AccountIdGenericSettings
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DetectorsSettings(BaseModel):
     """Configuration for detector backends."""
 
     ner: NERSettings
     address: AddressSettings
     coref: CorefSettings
+    account_ids: AccountIdSettings
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class FilterSettings(BaseModel):
+    """Settings for post-detection filters."""
+
+    protect_headings: bool = True
+    gpe_outside_addresses: bool = True
 
     model_config = ConfigDict(extra="forbid")
 
@@ -119,6 +145,7 @@ class ConfigModel(BaseModel):
     pseudonyms: PseudonymSettings
     verification: VerificationSettings
     detectors: DetectorsSettings
+    filters: FilterSettings
     precedence: list[str]
 
     model_config = ConfigDict(extra="forbid")
@@ -186,7 +213,10 @@ __all__ = [
     "NERSettings",
     "AddressSettings",
     "CorefSettings",
+    "AccountIdSettings",
+    "AccountIdGenericSettings",
     "DetectorsSettings",
+    "FilterSettings",
     "deep_merge_dicts",
     "load_config",
 ]
