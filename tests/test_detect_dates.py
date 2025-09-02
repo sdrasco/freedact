@@ -4,6 +4,11 @@ from redactor.detect.base import Detector, EntityLabel
 from redactor.detect.date_dob import DOBDetector
 from redactor.detect.date_generic import DateGenericDetector
 
+MONTH_NAME = "May 9, 1960"
+NUMERIC = "03/18/1976"
+ALT_NUMERIC = "08/05/1992"
+ALT_NUMERIC_NEXT = "08/06/1992"
+
 
 @pytest.fixture
 def det_generic() -> DateGenericDetector:
@@ -21,40 +26,40 @@ def det_dob() -> DOBDetector:
 
 
 def test_dob_date_of_birth(det_generic: DateGenericDetector, det_dob: DOBDetector) -> None:
-    text = "Date of Birth: July 4, 1982"
+    text = f"Date of Birth: {MONTH_NAME}"
     g_spans = det_generic.detect(text)
-    assert g_spans and g_spans[0].attrs["normalized"] == "1982-07-04"
+    assert g_spans and g_spans[0].attrs["normalized"] == "1960-05-09"
     spans = det_dob.detect(text)
     assert len(spans) == 1
     span = spans[0]
-    assert span.text == "July 4, 1982"
-    expected_start = text.index("July 4, 1982")
+    assert span.text == MONTH_NAME
+    expected_start = text.index(MONTH_NAME)
     assert span.start == expected_start
-    assert span.end == expected_start + len("July 4, 1982")
-    assert span.attrs["normalized"] == "1982-07-04"
+    assert span.end == expected_start + len(MONTH_NAME)
+    assert span.attrs["normalized"] == "1960-05-09"
     assert span.attrs["trigger"] == "date_of_birth"
     assert span.attrs["line_scope"] == "same_line"
     assert span.label is EntityLabel.DOB
 
 
 def test_dob_short_label_numeric(det_dob: DOBDetector) -> None:
-    text = "DOB 12/21/1975"
+    text = f"DOB: {NUMERIC}"
     spans = det_dob.detect(text)
     assert len(spans) == 1
     span = spans[0]
-    expected_start = text.index("12/21/1975")
+    expected_start = text.index(NUMERIC)
     assert span.start == expected_start
-    assert span.end == expected_start + len("12/21/1975")
-    assert span.attrs["normalized"] == "1975-12-21"
+    assert span.end == expected_start + len(NUMERIC)
+    assert span.attrs["normalized"] == "1976-03-18"
     assert span.attrs["trigger"] == "dob"
 
 
 def test_dob_born_trigger(det_dob: DOBDetector) -> None:
-    text = "Born on 4 July 1975"
+    text = f"Born on {MONTH_NAME}"
     spans = det_dob.detect(text)
     assert len(spans) == 1
     span = spans[0]
-    assert span.attrs["normalized"] == "1975-07-04"
+    assert span.attrs["normalized"] == "1960-05-09"
     assert span.attrs["trigger"] == "born"
 
 
@@ -64,7 +69,7 @@ def test_dob_born_trigger(det_dob: DOBDetector) -> None:
 
 
 def test_generic_not_dob(det_generic: DateGenericDetector, det_dob: DOBDetector) -> None:
-    text1 = "Executed on July 4, 1982"
+    text1 = f"Executed on {MONTH_NAME}"
     assert det_generic.detect(text1)
     assert det_dob.detect(text1) == []
 
@@ -79,11 +84,11 @@ def test_generic_not_dob(det_generic: DateGenericDetector, det_dob: DOBDetector)
 
 
 def test_punctuation_trimming(det_generic: DateGenericDetector, det_dob: DOBDetector) -> None:
-    text = "(Date of Birth: July 4, 1982)."
+    text = f"(Date of Birth: {MONTH_NAME})."
     g_spans = det_generic.detect(text)
-    assert g_spans and g_spans[0].text == "July 4, 1982"
+    assert g_spans and g_spans[0].text == MONTH_NAME
     spans = det_dob.detect(text)
-    assert spans and spans[0].text == "July 4, 1982"
+    assert spans and spans[0].text == MONTH_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -92,11 +97,11 @@ def test_punctuation_trimming(det_generic: DateGenericDetector, det_dob: DOBDete
 
 
 def test_multiple_dates(det_generic: DateGenericDetector, det_dob: DOBDetector) -> None:
-    text = "DOB: 07/04/1982. Executed on 07/05/1982."
+    text = f"DOB: {ALT_NUMERIC}. Executed on {ALT_NUMERIC_NEXT}."
     g_spans = det_generic.detect(text)
-    assert [s.text for s in g_spans] == ["07/04/1982", "07/05/1982"]
+    assert [s.text for s in g_spans] == [ALT_NUMERIC, ALT_NUMERIC_NEXT]
     spans = det_dob.detect(text)
-    assert [s.text for s in spans] == ["07/04/1982"]
+    assert [s.text for s in spans] == [ALT_NUMERIC]
 
 
 # ---------------------------------------------------------------------------
@@ -117,12 +122,12 @@ def test_invalid_date_not_dob(det_generic: DateGenericDetector, det_dob: DOBDete
 
 
 def test_line_context_same_and_prev(det_dob: DOBDetector) -> None:
-    text = "John Doe\nDate of Birth: December 21, 1975\nAddress: ..."
+    text = f"John Doe\nDate of Birth: {NUMERIC}\nAddress: ..."
     spans = det_dob.detect(text)
     assert spans and spans[0].attrs["line_scope"] == "same_line"
     assert spans[0].attrs["trigger"] == "date_of_birth"
 
-    text2 = "Date of Birth\nJuly 4, 1982"
+    text2 = f"Date of Birth:\n{MONTH_NAME}"
     spans2 = det_dob.detect(text2)
     assert spans2 and spans2[0].attrs["line_scope"] == "prev_line"
 
@@ -135,7 +140,7 @@ def test_line_context_same_and_prev(det_dob: DOBDetector) -> None:
 def test_detector_protocol(det_generic: DateGenericDetector, det_dob: DOBDetector) -> None:
     assert isinstance(det_generic, Detector)
     assert isinstance(det_dob, Detector)
-    text = "Date of Birth: July 4, 1982"
+    text = f"Date of Birth: {MONTH_NAME}"
     spans = det_dob.detect(text)
     for span in spans:
         assert 0 <= span.start < span.end <= len(text)

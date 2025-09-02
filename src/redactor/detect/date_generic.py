@@ -3,8 +3,8 @@
 This detector focuses on a small set of high‑precision date patterns and
 avoids heavy parsing libraries.  Supported formats (case‑insensitive) are::
 
-    Month D, YYYY   e.g. "July 4, 1982" (comma optional)
-    D Month YYYY    e.g. "4 July 1982"
+    Month D, YYYY   e.g. "May 9, 1960" (comma optional)
+    D Month YYYY    e.g. "4 July 1975"
     YYYY-MM-DD      ISO style with four digit year
     M/D/YYYY        or ``M-D-YYYY`` with a four digit year (US ordering)
 

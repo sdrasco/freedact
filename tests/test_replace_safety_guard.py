@@ -108,8 +108,8 @@ def test_generic_account_guard() -> None:
 
 def test_dob_guard() -> None:
     cfg = load_config()
-    text = "July 4, 1982"
-    spans = [_span(0, len(text), text, EntityLabel.DOB, attrs={"normalized": "1982-07-04"})]
+    text = "May 9, 1960"
+    spans = [_span(0, len(text), text, EntityLabel.DOB, attrs={"normalized": "1960-05-09"})]
     plan = plan_builder.build_replacement_plan(text, spans, cfg)
     repl = plan[0].replacement
     assert repl != text

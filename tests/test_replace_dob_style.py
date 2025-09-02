@@ -15,14 +15,14 @@ def _redact(text: str) -> str:
 
 
 def test_numeric_retains_numeric() -> None:
-    text = "DOB: 12/21/1975"
+    text = "DOB: 03/18/1976"
     new_text = _redact(text)
     assert re.search(r"\b\d{1,2}/\d{1,2}/\d{4}\b", new_text)
-    assert "12/21/1975" not in new_text
+    assert "03/18/1976" not in new_text
 
 
 def test_month_name_retains_month_name() -> None:
-    text = "Date of Birth: July 4, 1982"
+    text = "Date of Birth: May 9, 1960"
     new_text = _redact(text)
     assert re.search(r"[A-Z][a-z]+ \d{1,2}, \d{4}", new_text)
-    assert "July 4, 1982" not in new_text
+    assert "May 9, 1960" not in new_text

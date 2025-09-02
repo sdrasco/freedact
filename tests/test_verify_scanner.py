@@ -49,7 +49,7 @@ def test_policy_keep_roles() -> None:
 
 def test_policy_generic_dates() -> None:
     cfg = _base_cfg()
-    text = "Executed on July 4, 1982."
+    text = "Executed on May 9, 1960."
     report = scan_text(text, cfg)
     assert report.ignored_by_label["DATE_GENERIC"] == 1
     cfg.redact.generic_dates = True

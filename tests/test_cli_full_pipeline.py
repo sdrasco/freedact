@@ -15,7 +15,7 @@ SAMPLE_TEXT = (
     "Address: 366 Broadway\n"
     "San Francisco, CA 94105\n"
     'Hereinafter "Morgan"\n'
-    "Date of Birth: July 4, 1982\n"
+    "Date of Birth: May 9, 1960\n"
     "Email: john@acme.com\n"
     "Phone: (415) 555-0000\n"
     "Card: 4111 1111 1111 1111\n"
