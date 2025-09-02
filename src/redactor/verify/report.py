@@ -74,6 +74,8 @@ class AuditSummary:
     generated_at: str
     doc_hash_b32: str
     seed_present: bool
+    safety_retries: int
+    unsafe_rejected: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +157,7 @@ def summarize_audit(
     entries: list[AuditEntry],
     *,
     cfg: ConfigModel,
+    plan: list[PlanEntry],
     verification_report: VerificationReport | None = None,
 ) -> tuple[AuditSummary, dict[str, object] | None]:
     """Return summary information for ``entries``.
@@ -179,6 +182,15 @@ def summarize_audit(
         counts_by_label[e.label.name] = counts_by_label.get(e.label.name, 0) + 1
         deltas_total += e.length_delta
 
+    safety_retries = 0
+    unsafe_rejected = 0
+    for p in plan:
+        val = p.meta.get("safety_retry_count")
+        r = int(val) if isinstance(val, int) else 0
+        if r:
+            safety_retries += r
+            unsafe_rejected += 1
+
     generated_at = datetime.utcnow().isoformat()
     digest = doc_hash(text_before)
     doc_hash_b32 = base64.b32encode(digest).decode("ascii").lower().rstrip("=")
@@ -200,6 +212,8 @@ def summarize_audit(
         generated_at=generated_at,
         doc_hash_b32=doc_hash_b32,
         seed_present=seed_present,
+        safety_retries=safety_retries,
+        unsafe_rejected=unsafe_rejected,
     )
     return summary, verification_dict
 
@@ -321,7 +335,11 @@ def write_report_bundle(
 
     entries = build_audit_entries(text_before, text_after, plan)
     summary, verification_dict = summarize_audit(
-        text_before, entries, cfg=cfg, verification_report=verification_report
+        text_before,
+        entries,
+        cfg=cfg,
+        plan=plan,
+        verification_report=verification_report,
     )
     bundle = AuditBundle(entries=entries, summary=summary, verification=verification_dict)
 

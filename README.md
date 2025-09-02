@@ -154,6 +154,10 @@ Legal alias labels (e.g., `hereinafter`, `a/k/a`, `d/b/a`) are detected as `ALIA
 
 Plan entries hold exact `[start,end)` ranges and their replacements. We perform bounded safety checks at plan time to coerce risky candidates into safe shapes (emails → `example.org`, phones → `555` patterns, IDs with checksums or non‑colliding digits). Application is reverse, chunked, validated, and idempotent.
 
+Safety is enforced *by construction*: unsafe candidates are rejected and
+deterministically regenerated with salted keys up to two times.  Retry counts
+and reasons are recorded in the audit summary for traceability.
+
 
 
 ## Verification & Leakage Scoring
